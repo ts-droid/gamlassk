@@ -41,6 +41,9 @@ Used when those features are enabled:
 - `GOOGLE_CALLBACK_URL`
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
+- `VITE_APP_LOGO`
+- `VITE_ANALYTICS_ENDPOINT`
+- `VITE_ANALYTICS_WEBSITE_ID`
 - `VITE_OAUTH_PORTAL_URL`
 - `VITE_APP_ID`
 - `VITE_FRONTEND_FORGE_API_URL`
@@ -60,5 +63,7 @@ Recommended deployment path:
 4. Set build command to `pnpm build`.
 5. Set start command to `pnpm start`.
 6. Import environment variables from `.env.example` values, but with real secrets.
+
+If analytics is not used, leave the analytics variables empty and remove or adapt the script reference in `client/index.html` later if you want a warning-free build.
 
 ZIP upload can work for a first deploy, but GitHub is the better long-term source because redeploys then pull the latest branch automatically.
