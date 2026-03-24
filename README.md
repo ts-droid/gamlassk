@@ -58,11 +58,13 @@ Used when those features are enabled:
 Recommended deployment path:
 
 1. Push changes to GitHub.
-2. In Hostinger, create a new Node.js app from the GitHub repository.
-3. Use Node.js `22.x`.
-4. Set build command to `pnpm build`.
-5. Set start command to `pnpm start`.
-6. Import environment variables from `.env.example` values, but with real secrets.
+2. Run `pnpm hostinger:prepare` locally and commit the generated `hostinger-deploy/` folder.
+3. In Hostinger, create a new Node.js app from the GitHub repository.
+4. Set root directory to `./hostinger-deploy`.
+5. Use Node.js `22.x`.
+6. Set package manager to `npm`.
+7. Set entry file to `index.js`.
+8. Import environment variables from `.env.example` values, but with real secrets.
 
 If analytics is not used, leave the analytics variables empty and remove or adapt the script reference in `client/index.html` later if you want a warning-free build.
 

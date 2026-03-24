@@ -5,6 +5,7 @@ This project is a backend + frontend Node.js app, so deploy it as a Node.js appl
 ## Recommended path
 
 Use GitHub as the source of truth and connect Hostinger to this repository.
+Deploy from the generated `hostinger-deploy/` folder instead of the repository root.
 
 That gives us:
 
@@ -17,9 +18,12 @@ That gives us:
 
 - Source: GitHub repository
 - Branch: `main`
+- Root directory: `./hostinger-deploy`
 - Node.js version: `22.x`
-- Build command: `pnpm build`
-- Start command: `pnpm start`
+- Package manager: `npm`
+- Entry file: `index.js`
+- Build command: leave empty if allowed, otherwise let Hostinger run dependency install only
+- Start command: `npm start`
 
 ## Environment variables to add in Hostinger
 
@@ -50,5 +54,5 @@ Optional depending on enabled features:
 
 ## Important note
 
-If you deploy by ZIP first, Hostinger can run it, but later redeploys require uploading a new ZIP again.
-If you deploy from GitHub, redeploys can reuse the latest code from the selected branch.
+The `hostinger-deploy/` folder is generated from the root project by running `pnpm hostinger:prepare`.
+If you change the application code, regenerate that folder and commit it before redeploying from GitHub.
