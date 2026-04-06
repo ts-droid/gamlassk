@@ -55,7 +55,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (
+      user.email &&
+      ENV.ownerEmail &&
+      String(user.email).trim().toLowerCase() === ENV.ownerEmail
+    ) {
       values.role = 'admin';
       updateSet.role = 'admin';
     }

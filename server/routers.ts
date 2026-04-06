@@ -28,7 +28,6 @@ export const appRouter = router({
       return {
         google: isGoogleAuthEnabled(),
         password: true, // Password-based login for registered members
-        manus: true,
       };
     }),
     

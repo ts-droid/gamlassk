@@ -5,10 +5,45 @@ import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
-import { getLoginUrl } from "./const";
+import { APP_LOGO, APP_TITLE, getLoginUrl } from "./const";
 import "./index.css";
 
 const queryClient = new QueryClient();
+const analyticsEndpoint = import.meta.env.VITE_ANALYTICS_ENDPOINT?.trim();
+const analyticsWebsiteId = import.meta.env.VITE_ANALYTICS_WEBSITE_ID?.trim();
+
+if (typeof document !== "undefined") {
+  document.title = APP_TITLE;
+
+  const favicon =
+    document.querySelector<HTMLLinkElement>('link[rel="icon"]') ??
+    document.createElement("link");
+  favicon.rel = "icon";
+  favicon.type = "image/png";
+  favicon.href = APP_LOGO;
+  document.head.appendChild(favicon);
+
+  const appleTouchIcon =
+    document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]') ??
+    document.createElement("link");
+  appleTouchIcon.rel = "apple-touch-icon";
+  appleTouchIcon.href = APP_LOGO;
+  document.head.appendChild(appleTouchIcon);
+
+  if (analyticsEndpoint && analyticsWebsiteId) {
+    const existingScript = document.querySelector(
+      'script[data-website-id]'
+    ) as HTMLScriptElement | null;
+
+    if (!existingScript) {
+      const script = document.createElement("script");
+      script.defer = true;
+      script.src = `${analyticsEndpoint.replace(/\/$/, "")}/umami`;
+      script.dataset.websiteId = analyticsWebsiteId;
+      document.body.appendChild(script);
+    }
+  }
+}
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;

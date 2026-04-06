@@ -9,7 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { getLoginUrl } from "@/const";
 import { Loader2 } from "lucide-react";
 import { PasswordLoginDialog } from "./PasswordLoginDialog";
 
@@ -41,13 +40,6 @@ export function UnifiedLoginDialog({ open, onOpenChange }: UnifiedLoginDialogPro
   const handleGoogleLogin = () => {
     setLoading("google");
     window.location.href = "/auth/google";
-  };
-
-
-
-  const handleManusLogin = () => {
-    setLoading("manus");
-    window.location.href = getLoginUrl();
   };
 
   return (
@@ -136,51 +128,6 @@ export function UnifiedLoginDialog({ open, onOpenChange }: UnifiedLoginDialogPro
                 </>
               )}
             </Button>
-          )}
-
-          {/* Manus Login */}
-          {providers?.manus && (
-            <>
-              {providers?.google && (
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <Separator />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">
-                      Eller
-                    </span>
-                  </div>
-                </div>
-              )}
-              <Button
-                variant="outline"
-                className="w-full h-12 text-base"
-                onClick={handleManusLogin}
-                disabled={loading !== null}
-              >
-                {loading === "manus" ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Ansluter till Manus...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="mr-2 h-5 w-5"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                    >
-                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                      <circle cx="12" cy="7" r="4" />
-                    </svg>
-                    Fortsätt med Manus
-                  </>
-                )}
-              </Button>
-            </>
           )}
         </div>
 

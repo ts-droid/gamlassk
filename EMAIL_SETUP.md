@@ -110,4 +110,4 @@ https://dindomän.se/admin
 
 ## Support
 
-För hjälp med konfiguration, kontakta Manus support eller läs dokumentationen för vald tjänst.
+För hjälp med konfiguration, kontakta leverantörens support eller läs dokumentationen för vald tjänst.

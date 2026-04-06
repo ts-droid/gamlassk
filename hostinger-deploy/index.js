@@ -8,24 +8,62 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// shared/const.ts
-var const_exports = {};
-__export(const_exports, {
-  AXIOS_TIMEOUT_MS: () => AXIOS_TIMEOUT_MS,
-  COOKIE_NAME: () => COOKIE_NAME,
-  NOT_ADMIN_ERR_MSG: () => NOT_ADMIN_ERR_MSG,
-  ONE_YEAR_MS: () => ONE_YEAR_MS,
-  UNAUTHED_ERR_MSG: () => UNAUTHED_ERR_MSG
+// server/googleAuth.ts
+var googleAuth_exports = {};
+__export(googleAuth_exports, {
+  configureGoogleAuth: () => configureGoogleAuth,
+  isGoogleAuthEnabled: () => isGoogleAuthEnabled
 });
-var COOKIE_NAME, ONE_YEAR_MS, AXIOS_TIMEOUT_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
-var init_const = __esm({
-  "shared/const.ts"() {
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+function configureGoogleAuth() {
+  if (googleStrategyConfigured) return;
+  const clientID = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
+  if (!clientID || !clientSecret || !callbackURL) {
+    console.warn("[Google Auth] Missing configuration. Google Sign-In will be disabled.");
+    return;
+  }
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID,
+        clientSecret,
+        callbackURL
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          const name = profile.displayName;
+          const googleId = profile.id;
+          if (!email) {
+            return done(new Error("No email found in Google profile"));
+          }
+          return done(null, {
+            provider: "google",
+            providerId: googleId,
+            email,
+            name,
+            loginMethod: "google"
+          });
+        } catch (error) {
+          return done(error);
+        }
+      }
+    )
+  );
+  googleStrategyConfigured = true;
+  console.log("[Google Auth] Strategy configured");
+}
+function isGoogleAuthEnabled() {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL);
+}
+var googleStrategyConfigured;
+var init_googleAuth = __esm({
+  "server/googleAuth.ts"() {
     "use strict";
-    COOKIE_NAME = "app_session_id";
-    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-    AXIOS_TIMEOUT_MS = 3e4;
-    UNAUTHED_ERR_MSG = "Please login (10001)";
-    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+    googleStrategyConfigured = false;
   }
 });
 
@@ -58,7 +96,7 @@ var init_schema = __esm({
        * Use this for relations between tables.
        */
       id: int("id").autoincrement().primaryKey(),
-      /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
+      /** Unique login identifier for the account. */
       openId: varchar("openId", { length: 64 }).notNull().unique(),
       name: text("name"),
       email: varchar("email", { length: 320 }),
@@ -256,11 +294,9 @@ var init_env = __esm({
   "server/_core/env.ts"() {
     "use strict";
     ENV = {
-      appId: process.env.VITE_APP_ID ?? "",
       cookieSecret: process.env.JWT_SECRET ?? "",
       databaseUrl: process.env.DATABASE_URL ?? "",
-      oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-      ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+      ownerEmail: (process.env.OWNER_EMAIL ?? "").trim().toLowerCase(),
       isProduction: process.env.NODE_ENV === "production",
       forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
       forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? ""
@@ -336,7 +372,7 @@ async function upsertUser(user) {
     if (user.role !== void 0) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (user.email && ENV.ownerEmail && String(user.email).trim().toLowerCase() === ENV.ownerEmail) {
       values.role = "admin";
       updateSet.role = "admin";
     }
@@ -611,6 +647,27 @@ var init_db = __esm({
   }
 });
 
+// shared/const.ts
+var const_exports = {};
+__export(const_exports, {
+  AXIOS_TIMEOUT_MS: () => AXIOS_TIMEOUT_MS,
+  COOKIE_NAME: () => COOKIE_NAME,
+  NOT_ADMIN_ERR_MSG: () => NOT_ADMIN_ERR_MSG,
+  ONE_YEAR_MS: () => ONE_YEAR_MS,
+  UNAUTHED_ERR_MSG: () => UNAUTHED_ERR_MSG
+});
+var COOKIE_NAME, ONE_YEAR_MS, AXIOS_TIMEOUT_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
+var init_const = __esm({
+  "shared/const.ts"() {
+    "use strict";
+    COOKIE_NAME = "app_session_id";
+    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
+    AXIOS_TIMEOUT_MS = 3e4;
+    UNAUTHED_ERR_MSG = "Please login (10001)";
+    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+  }
+});
+
 // shared/_core/errors.ts
 var HttpError, ForbiddenError;
 var init_errors = __esm({
@@ -632,10 +689,9 @@ var sdk_exports = {};
 __export(sdk_exports, {
   sdk: () => sdk
 });
-import axios from "axios";
 import { parse as parseCookieHeader } from "cookie";
 import { SignJWT, jwtVerify } from "jose";
-var isNonEmptyString, EXCHANGE_TOKEN_PATH, GET_USER_INFO_PATH, GET_USER_INFO_WITH_JWT_PATH, OAuthService, createOAuthHttpClient, SDKServer, sdk;
+var isNonEmptyString, SessionService, sdk;
 var init_sdk = __esm({
   "server/_core/sdk.ts"() {
     "use strict";
@@ -644,99 +700,7 @@ var init_sdk = __esm({
     init_db();
     init_env();
     isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
-    EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
-    GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
-    GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
-    OAuthService = class {
-      constructor(client) {
-        this.client = client;
-        console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-        if (!ENV.oAuthServerUrl) {
-          console.error(
-            "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-          );
-        }
-      }
-      decodeState(state) {
-        const redirectUri = atob(state);
-        return redirectUri;
-      }
-      async getTokenByCode(code, state) {
-        const payload = {
-          clientId: ENV.appId,
-          grantType: "authorization_code",
-          code,
-          redirectUri: this.decodeState(state)
-        };
-        const { data } = await this.client.post(
-          EXCHANGE_TOKEN_PATH,
-          payload
-        );
-        return data;
-      }
-      async getUserInfoByToken(token) {
-        const { data } = await this.client.post(
-          GET_USER_INFO_PATH,
-          {
-            accessToken: token.accessToken
-          }
-        );
-        return data;
-      }
-    };
-    createOAuthHttpClient = () => axios.create({
-      baseURL: ENV.oAuthServerUrl,
-      timeout: AXIOS_TIMEOUT_MS
-    });
-    SDKServer = class {
-      client;
-      oauthService;
-      constructor(client = createOAuthHttpClient()) {
-        this.client = client;
-        this.oauthService = new OAuthService(this.client);
-      }
-      deriveLoginMethod(platforms, fallback) {
-        if (fallback && fallback.length > 0) return fallback;
-        if (!Array.isArray(platforms) || platforms.length === 0) return null;
-        const set = new Set(
-          platforms.filter((p) => typeof p === "string")
-        );
-        if (set.has("REGISTERED_PLATFORM_EMAIL")) return "email";
-        if (set.has("REGISTERED_PLATFORM_GOOGLE")) return "google";
-        if (set.has("REGISTERED_PLATFORM_APPLE")) return "apple";
-        if (set.has("REGISTERED_PLATFORM_MICROSOFT") || set.has("REGISTERED_PLATFORM_AZURE"))
-          return "microsoft";
-        if (set.has("REGISTERED_PLATFORM_GITHUB")) return "github";
-        const first = Array.from(set)[0];
-        return first ? first.toLowerCase() : null;
-      }
-      /**
-       * Exchange OAuth authorization code for access token
-       * @example
-       * const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-       */
-      async exchangeCodeForToken(code, state) {
-        return this.oauthService.getTokenByCode(code, state);
-      }
-      /**
-       * Get user information using access token
-       * @example
-       * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-       */
-      async getUserInfo(accessToken) {
-        const data = await this.oauthService.getUserInfoByToken({
-          accessToken
-        });
-        const loginMethod = this.deriveLoginMethod(
-          data?.platforms,
-          data?.platform ?? data.platform ?? null
-        );
-        return {
-          ...data,
-          platform: loginMethod,
-          loginMethod
-        };
-      }
+    SessionService = class {
       parseCookies(cookieHeader) {
         if (!cookieHeader) {
           return /* @__PURE__ */ new Map();
@@ -745,19 +709,15 @@ var init_sdk = __esm({
         return new Map(Object.entries(parsed));
       }
       getSessionSecret() {
-        const secret = ENV.cookieSecret;
-        return new TextEncoder().encode(secret);
+        if (!ENV.cookieSecret) {
+          throw new Error("JWT_SECRET is not configured");
+        }
+        return new TextEncoder().encode(ENV.cookieSecret);
       }
-      /**
-       * Create a session token for a Manus user openId
-       * @example
-       * const sessionToken = await sdk.createSessionToken(userInfo.openId);
-       */
       async createSessionToken(openId, options = {}) {
         return this.signSession(
           {
             openId,
-            appId: ENV.appId,
             name: options.name || ""
           },
           options
@@ -770,7 +730,6 @@ var init_sdk = __esm({
         const secretKey = this.getSessionSecret();
         return new SignJWT({
           openId: payload.openId,
-          appId: payload.appId,
           name: payload.name
         }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(secretKey);
       }
@@ -784,39 +743,19 @@ var init_sdk = __esm({
           const { payload } = await jwtVerify(cookieValue, secretKey, {
             algorithms: ["HS256"]
           });
-          const { openId, appId, name } = payload;
-          if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
+          const { openId, name } = payload;
+          if (!isNonEmptyString(openId) || !isNonEmptyString(name)) {
             console.warn("[Auth] Session payload missing required fields");
             return null;
           }
           return {
             openId,
-            appId,
             name
           };
         } catch (error) {
           console.warn("[Auth] Session verification failed", String(error));
           return null;
         }
-      }
-      async getUserInfoWithJwt(jwtToken) {
-        const payload = {
-          jwtToken,
-          projectId: ENV.appId
-        };
-        const { data } = await this.client.post(
-          GET_USER_INFO_WITH_JWT_PATH,
-          payload
-        );
-        const loginMethod = this.deriveLoginMethod(
-          data?.platforms,
-          data?.platform ?? data.platform ?? null
-        );
-        return {
-          ...data,
-          platform: loginMethod,
-          loginMethod
-        };
       }
       async authenticateRequest(req) {
         const cookies = this.parseCookies(req.headers.cookie);
@@ -829,22 +768,6 @@ var init_sdk = __esm({
         const signedInAt = /* @__PURE__ */ new Date();
         let user = await getUserByOpenId(sessionUserId);
         if (!user) {
-          try {
-            const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-            await upsertUser({
-              openId: userInfo.openId,
-              name: userInfo.name || null,
-              email: userInfo.email ?? null,
-              loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-              lastSignedIn: signedInAt
-            });
-            user = await getUserByOpenId(userInfo.openId);
-          } catch (error) {
-            console.error("[Auth] Failed to sync user from OAuth:", error);
-            throw ForbiddenError("Failed to sync user info");
-          }
-        }
-        if (!user) {
           throw ForbiddenError("User not found");
         }
         await upsertUser({
@@ -854,66 +777,7 @@ var init_sdk = __esm({
         return user;
       }
     };
-    sdk = new SDKServer();
-  }
-});
-
-// server/googleAuth.ts
-var googleAuth_exports = {};
-__export(googleAuth_exports, {
-  configureGoogleAuth: () => configureGoogleAuth,
-  isGoogleAuthEnabled: () => isGoogleAuthEnabled
-});
-import passport from "passport";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-function configureGoogleAuth() {
-  if (googleStrategyConfigured) return;
-  const clientID = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
-  if (!clientID || !clientSecret || !callbackURL) {
-    console.warn("[Google Auth] Missing configuration. Google Sign-In will be disabled.");
-    return;
-  }
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID,
-        clientSecret,
-        callbackURL
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const name = profile.displayName;
-          const googleId = profile.id;
-          if (!email) {
-            return done(new Error("No email found in Google profile"));
-          }
-          return done(null, {
-            provider: "google",
-            providerId: googleId,
-            email,
-            name,
-            loginMethod: "google"
-          });
-        } catch (error) {
-          return done(error);
-        }
-      }
-    )
-  );
-  googleStrategyConfigured = true;
-  console.log("[Google Auth] Strategy configured");
-}
-function isGoogleAuthEnabled() {
-  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL);
-}
-var googleStrategyConfigured;
-var init_googleAuth = __esm({
-  "server/googleAuth.ts"() {
-    "use strict";
-    googleStrategyConfigured = false;
+    sdk = new SessionService();
   }
 });
 
@@ -1953,6 +1817,7 @@ var init_icalGenerator = __esm({
 });
 
 // server/_core/index.ts
+init_googleAuth();
 import "dotenv/config";
 import express2 from "express";
 import cookieParser from "cookie-parser";
@@ -1961,9 +1826,11 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
-// server/_core/oauth.ts
-init_const();
+// server/googleAuthRoutes.ts
 init_db();
+init_const();
+import { Router } from "express";
+import passport2 from "passport";
 
 // server/_core/cookies.ts
 function isSecureRequest(req) {
@@ -1982,56 +1849,7 @@ function getSessionCookieOptions(req) {
   };
 }
 
-// server/_core/oauth.ts
-init_sdk();
-function getQueryParam(req, key) {
-  const value = req.query[key];
-  return typeof value === "string" ? value : void 0;
-}
-function registerOAuthRoutes(app) {
-  app.get("/api/oauth/callback", async (req, res) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
-        return;
-      }
-      await upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: /* @__PURE__ */ new Date()
-      });
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS
-      });
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(302, "/");
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
-    }
-  });
-}
-
-// server/_core/index.ts
-init_googleAuth();
-
 // server/googleAuthRoutes.ts
-init_db();
-init_const();
-import { Router } from "express";
-import passport2 from "passport";
 init_sdk();
 function createGoogleAuthRoutes() {
   const router2 = Router();
@@ -2061,7 +1879,7 @@ function createGoogleAuthRoutes() {
         });
         const token = await sdk.createSessionToken(openId, { name: user.name || "" });
         const cookieOptions = getSessionCookieOptions(req);
-        res.cookie(COOKIE_NAME, token, cookieOptions);
+        res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
         res.redirect("/");
       } catch (error) {
         console.error("[Google Auth] Callback error:", error);
@@ -2271,9 +2089,8 @@ var appRouter = router({
       const { isGoogleAuthEnabled: isGoogleAuthEnabled2 } = await Promise.resolve().then(() => (init_googleAuth(), googleAuth_exports));
       return {
         google: isGoogleAuthEnabled2(),
-        password: true,
+        password: true
         // Password-based login for registered members
-        manus: true
       };
     }),
     // Password-based login
@@ -3333,12 +3150,16 @@ async function findAvailablePort(startPort = 3e3) {
 async function startServer() {
   const app = express2();
   const server = createServer(app);
+  const preferredPort = parseInt(process.env.PORT || "3000");
+  console.log("[Startup] Booting Gamla SSK server");
+  console.log(`[Startup] NODE_ENV=${process.env.NODE_ENV || "undefined"}`);
+  console.log(`[Startup] PORT=${preferredPort}`);
+  console.log(`[Startup] Database configured=${process.env.DATABASE_URL ? "yes" : "no"}`);
   app.use(express2.json({ limit: "50mb" }));
   app.use(express2.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
   app.use(passport3.initialize());
   configureGoogleAuth();
-  registerOAuthRoutes(app);
   app.use(createGoogleAuthRoutes());
   app.get("/api/calendar/feed.ics", async (req, res) => {
     const { getAllEvents: getAllEvents2 } = await Promise.resolve().then(() => (init_eventDb(), eventDb_exports));
@@ -3378,13 +3199,15 @@ async function startServer() {
     serveStatic(app);
   }
   console.log("[Cron] Automatic payment reminders DISABLED - use manual reminders in admin panel");
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
-  if (port !== preferredPort) {
+  const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);
+  if (process.env.NODE_ENV !== "production" && port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.on("error", (error) => {
+    console.error("[Startup] Server failed to listen:", error);
+  });
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 startServer().catch(console.error);

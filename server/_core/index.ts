@@ -5,7 +5,6 @@ import passport from "passport";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 
 import { configureGoogleAuth } from "../googleAuth";
 import { createGoogleAuthRoutes } from "../googleAuthRoutes";
@@ -37,6 +36,13 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const preferredPort = parseInt(process.env.PORT || "3000");
+
+  console.log("[Startup] Booting Gamla SSK server");
+  console.log(`[Startup] NODE_ENV=${process.env.NODE_ENV || "undefined"}`);
+  console.log(`[Startup] PORT=${preferredPort}`);
+  console.log(`[Startup] Database configured=${process.env.DATABASE_URL ? "yes" : "no"}`);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -46,8 +52,6 @@ async function startServer() {
   app.use(passport.initialize());
   // Configure Google OAuth
   configureGoogleAuth();
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
 
   // Google OAuth routes
   app.use(createGoogleAuthRoutes());
@@ -113,15 +117,21 @@ async function startServer() {
   
   console.log('[Cron] Automatic payment reminders DISABLED - use manual reminders in admin panel');
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port =
+    process.env.NODE_ENV === "production"
+      ? preferredPort
+      : await findAvailablePort(preferredPort);
 
-  if (port !== preferredPort) {
+  if (process.env.NODE_ENV !== "production" && port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.on("error", error => {
+    console.error("[Startup] Server failed to listen:", error);
+  });
+
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 

@@ -16,6 +16,8 @@ That gives us:
 
 ## Recommended Hostinger settings
 
+Preferred if Hostinger allows changing root directory:
+
 - Source: GitHub repository
 - Branch: `main`
 - Root directory: `./hostinger-deploy`
@@ -24,6 +26,19 @@ That gives us:
 - Entry file: `index.js`
 - Build command: leave empty if allowed, otherwise let Hostinger run dependency install only
 - Start command: `npm start`
+
+Fallback if Hostinger locks root directory to `./`:
+
+- Source: GitHub repository
+- Branch: `main`
+- Root directory: `./`
+- Node.js version: `22.x`
+- Package manager: `npm`
+- Entry file: `index.js`
+- Build command: leave empty if allowed, otherwise let Hostinger run dependency install only
+- Start command: `npm start`
+
+The root `index.js` forwards startup to the generated runtime bundle in `hostinger-deploy/`, so both setups are supported.
 
 ## Environment variables to add in Hostinger
 
@@ -37,18 +52,15 @@ Optional depending on enabled features:
 
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
+- `OWNER_EMAIL`
 - `VITE_APP_LOGO`
 - `VITE_ANALYTICS_ENDPOINT`
 - `VITE_ANALYTICS_WEBSITE_ID`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_CALLBACK_URL`
-- `VITE_APP_ID`
-- `VITE_OAUTH_PORTAL_URL`
 - `VITE_FRONTEND_FORGE_API_URL`
 - `VITE_FRONTEND_FORGE_API_KEY`
-- `OAUTH_SERVER_URL`
-- `OWNER_OPEN_ID`
 - `BUILT_IN_FORGE_API_URL`
 - `BUILT_IN_FORGE_API_KEY`
 
