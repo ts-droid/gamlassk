@@ -8,24 +8,62 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// shared/const.ts
-var const_exports = {};
-__export(const_exports, {
-  AXIOS_TIMEOUT_MS: () => AXIOS_TIMEOUT_MS,
-  COOKIE_NAME: () => COOKIE_NAME,
-  NOT_ADMIN_ERR_MSG: () => NOT_ADMIN_ERR_MSG,
-  ONE_YEAR_MS: () => ONE_YEAR_MS,
-  UNAUTHED_ERR_MSG: () => UNAUTHED_ERR_MSG
+// server/googleAuth.ts
+var googleAuth_exports = {};
+__export(googleAuth_exports, {
+  configureGoogleAuth: () => configureGoogleAuth,
+  isGoogleAuthEnabled: () => isGoogleAuthEnabled
 });
-var COOKIE_NAME, ONE_YEAR_MS, AXIOS_TIMEOUT_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
-var init_const = __esm({
-  "shared/const.ts"() {
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+function configureGoogleAuth() {
+  if (googleStrategyConfigured) return;
+  const clientID = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
+  if (!clientID || !clientSecret || !callbackURL) {
+    console.warn("[Google Auth] Missing configuration. Google Sign-In will be disabled.");
+    return;
+  }
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID,
+        clientSecret,
+        callbackURL
+      },
+      async (accessToken, refreshToken, profile, done) => {
+        try {
+          const email = profile.emails?.[0]?.value;
+          const name = profile.displayName;
+          const googleId = profile.id;
+          if (!email) {
+            return done(new Error("No email found in Google profile"));
+          }
+          return done(null, {
+            provider: "google",
+            providerId: googleId,
+            email,
+            name,
+            loginMethod: "google"
+          });
+        } catch (error) {
+          return done(error);
+        }
+      }
+    )
+  );
+  googleStrategyConfigured = true;
+  console.log("[Google Auth] Strategy configured");
+}
+function isGoogleAuthEnabled() {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL);
+}
+var googleStrategyConfigured;
+var init_googleAuth = __esm({
+  "server/googleAuth.ts"() {
     "use strict";
-    COOKIE_NAME = "app_session_id";
-    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
-    AXIOS_TIMEOUT_MS = 3e4;
-    UNAUTHED_ERR_MSG = "Please login (10001)";
-    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
+    googleStrategyConfigured = false;
   }
 });
 
@@ -58,7 +96,7 @@ var init_schema = __esm({
        * Use this for relations between tables.
        */
       id: int("id").autoincrement().primaryKey(),
-      /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
+      /** Unique login identifier for the account. */
       openId: varchar("openId", { length: 64 }).notNull().unique(),
       name: text("name"),
       email: varchar("email", { length: 320 }),
@@ -129,6 +167,7 @@ var init_schema = __esm({
       originalUrl: text("originalUrl"),
       // Original full-size image
       category: varchar("category", { length: 100 }),
+      tags: json("tags").$type(),
       uploadedBy: int("uploadedBy").references(() => users.id),
       createdAt: timestamp("createdAt").defaultNow().notNull()
     });
@@ -142,6 +181,9 @@ var init_schema = __esm({
       location: varchar("location", { length: 255 }),
       type: varchar("type", { length: 100 }),
       // e.g., "Vårfest", "Bingo", "Match"
+      feeAmount: varchar("feeAmount", { length: 20 }),
+      paymentInstructions: text("paymentInstructions"),
+      registrationNotice: text("registrationNotice"),
       maxParticipants: int("maxParticipants"),
       // null = unlimited
       registrationDeadline: timestamp("registrationDeadline"),
@@ -256,11 +298,10 @@ var init_env = __esm({
   "server/_core/env.ts"() {
     "use strict";
     ENV = {
-      appId: process.env.VITE_APP_ID ?? "",
       cookieSecret: process.env.JWT_SECRET ?? "",
       databaseUrl: process.env.DATABASE_URL ?? "",
-      oAuthServerUrl: process.env.OAUTH_SERVER_URL ?? "",
-      ownerOpenId: process.env.OWNER_OPEN_ID ?? "",
+      ownerEmail: (process.env.OWNER_EMAIL ?? "").trim().toLowerCase(),
+      adminPassword: process.env.ADMIN_PASSWORD ?? "",
       isProduction: process.env.NODE_ENV === "production",
       forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
       forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? ""
@@ -273,6 +314,7 @@ var db_exports = {};
 __export(db_exports, {
   createDocument: () => createDocument,
   deleteDocument: () => deleteDocument,
+  ensureSchemaCompatibility: () => ensureSchemaCompatibility,
   generateMemberNumber: () => generateMemberNumber,
   getAllDocuments: () => getAllDocuments,
   getDb: () => getDb,
@@ -295,6 +337,105 @@ __export(db_exports, {
 });
 import { eq, and, sql, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+function normalizePermissions(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => typeof item === "string");
+      }
+    } catch {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+function parseDatabaseUrl(databaseUrl) {
+  const parsed = new URL(databaseUrl);
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace(/^\//, "")
+  };
+}
+async function ensureSchemaCompatibility() {
+  if (!ENV.databaseUrl) {
+    console.warn("[Database] Skipping schema compatibility check: DATABASE_URL missing");
+    return;
+  }
+  let connection = null;
+  try {
+    connection = await mysql.createConnection(parseDatabaseUrl(ENV.databaseUrl));
+    const [userColumnsRows] = await connection.query("SHOW COLUMNS FROM `users`");
+    const existingUserColumns = new Set(
+      Array.isArray(userColumnsRows) ? userColumnsRows.map((row) => String(row.Field)) : []
+    );
+    for (const [columnName, statement] of USER_SCHEMA_PATCHES) {
+      if (existingUserColumns.has(columnName)) {
+        continue;
+      }
+      console.log(`[Database] Adding missing users column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`users\` ${statement}`);
+    }
+    const [galleryColumnsRows] = await connection.query("SHOW COLUMNS FROM `gallery_photos`");
+    const existingGalleryColumns = new Set(
+      Array.isArray(galleryColumnsRows) ? galleryColumnsRows.map((row) => String(row.Field)) : []
+    );
+    for (const [columnName, statement] of GALLERY_SCHEMA_PATCHES) {
+      if (existingGalleryColumns.has(columnName)) {
+        continue;
+      }
+      console.log(`[Database] Adding missing gallery_photos column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`gallery_photos\` ${statement}`);
+    }
+    const [eventColumnsRows] = await connection.query("SHOW COLUMNS FROM `events`");
+    const existingEventColumns = new Set(
+      Array.isArray(eventColumnsRows) ? eventColumnsRows.map((row) => String(row.Field)) : []
+    );
+    for (const [columnName, statement] of EVENT_SCHEMA_PATCHES) {
+      if (existingEventColumns.has(columnName)) {
+        continue;
+      }
+      console.log(`[Database] Adding missing events column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`events\` ${statement}`);
+    }
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`password_reset_tokens\` (
+        \`id\` int AUTO_INCREMENT NOT NULL,
+        \`userId\` int NOT NULL,
+        \`token\` varchar(255) NOT NULL,
+        \`expiresAt\` timestamp NOT NULL,
+        \`used\` int NOT NULL DEFAULT 0,
+        \`createdAt\` timestamp NOT NULL DEFAULT (now()),
+        PRIMARY KEY (\`id\`)
+      )
+    `);
+    for (const roleSeed of SYSTEM_ROLE_SEEDS) {
+      await connection.query(
+        `
+          INSERT INTO \`roles\` (\`name\`, \`description\`, \`permissions\`, \`isCustom\`)
+          VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            \`description\` = VALUES(\`description\`),
+            \`permissions\` = VALUES(\`permissions\`),
+            \`isCustom\` = VALUES(\`isCustom\`)
+        `,
+        [roleSeed.name, roleSeed.description, roleSeed.permissions, roleSeed.isCustom]
+      );
+    }
+    console.log("[Database] Schema compatibility check complete");
+  } catch (error) {
+    console.error("[Database] Schema compatibility check failed:", error);
+  } finally {
+    await connection?.end();
+  }
+}
 async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -336,7 +477,7 @@ async function upsertUser(user) {
     if (user.role !== void 0) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (user.email && ENV.ownerEmail && String(user.email).trim().toLowerCase() === ENV.ownerEmail) {
       values.role = "admin";
       updateSet.role = "admin";
     }
@@ -379,10 +520,11 @@ async function userHasPermission(userId, permission) {
       return false;
     }
     const role = userResult[0].role;
-    if (role.permissions.includes("manage_all")) {
+    const permissions = normalizePermissions(role.permissions);
+    if (permissions.includes("manage_all")) {
       return true;
     }
-    return role.permissions.includes(permission);
+    return permissions.includes(permission);
   } catch (error) {
     console.error("[Database] Failed to check permission:", error);
     return false;
@@ -601,13 +743,92 @@ async function deleteDocument(id) {
   if (!db) throw new Error("Database not available");
   await db.delete(documents).where(eq(documents.id, id));
 }
-var _db;
+var _db, USER_SCHEMA_PATCHES, GALLERY_SCHEMA_PATCHES, EVENT_SCHEMA_PATCHES, SYSTEM_ROLE_SEEDS;
 var init_db = __esm({
   "server/db.ts"() {
     "use strict";
     init_schema();
     init_env();
     _db = null;
+    USER_SCHEMA_PATCHES = [
+      ["password", "ADD COLUMN `password` varchar(255)"],
+      ["roleId", "ADD COLUMN `roleId` int"],
+      ["personnummer", "ADD COLUMN `personnummer` varchar(13)"],
+      ["streetAddress", "ADD COLUMN `streetAddress` text"],
+      ["postalCode", "ADD COLUMN `postalCode` varchar(10)"],
+      ["city", "ADD COLUMN `city` varchar(100)"],
+      ["joinYear", "ADD COLUMN `joinYear` int"],
+      ["memberType", "ADD COLUMN `memberType` enum('ordinarie','hedersmedlem','stodmedlem') DEFAULT 'ordinarie'"],
+      ["paymentStatus", "ADD COLUMN `paymentStatus` enum('paid','unpaid','exempt') DEFAULT 'unpaid'"],
+      ["paymentYear", "ADD COLUMN `paymentYear` int"],
+      ["showInDirectory", "ADD COLUMN `showInDirectory` int NOT NULL DEFAULT 1"]
+    ];
+    GALLERY_SCHEMA_PATCHES = [
+      ["tags", "ADD COLUMN `tags` json"]
+    ];
+    EVENT_SCHEMA_PATCHES = [
+      ["feeAmount", "ADD COLUMN `feeAmount` varchar(20)"],
+      ["paymentInstructions", "ADD COLUMN `paymentInstructions` text"],
+      ["registrationNotice", "ADD COLUMN `registrationNotice` text"]
+    ];
+    SYSTEM_ROLE_SEEDS = [
+      {
+        name: "huvudadmin",
+        description: "Huvudadministrat\xF6r med full \xE5tkomst",
+        permissions: JSON.stringify([
+          "manage_all",
+          "manage_roles",
+          "manage_users",
+          "manage_news",
+          "manage_members",
+          "view_members",
+          "manage_events",
+          "manage_gallery",
+          "manage_cms"
+        ]),
+        isCustom: 0
+      },
+      {
+        name: "nyhetsadmin",
+        description: "Administrat\xF6r f\xF6r nyheter, evenemang och galleri",
+        permissions: JSON.stringify([
+          "manage_news",
+          "manage_events",
+          "manage_gallery"
+        ]),
+        isCustom: 0
+      },
+      {
+        name: "medlemsadmin",
+        description: "Administrat\xF6r f\xF6r medlemshantering",
+        permissions: JSON.stringify([
+          "manage_members",
+          "view_members"
+        ]),
+        isCustom: 0
+      }
+    ];
+  }
+});
+
+// shared/const.ts
+var const_exports = {};
+__export(const_exports, {
+  AXIOS_TIMEOUT_MS: () => AXIOS_TIMEOUT_MS,
+  COOKIE_NAME: () => COOKIE_NAME,
+  NOT_ADMIN_ERR_MSG: () => NOT_ADMIN_ERR_MSG,
+  ONE_YEAR_MS: () => ONE_YEAR_MS,
+  UNAUTHED_ERR_MSG: () => UNAUTHED_ERR_MSG
+});
+var COOKIE_NAME, ONE_YEAR_MS, AXIOS_TIMEOUT_MS, UNAUTHED_ERR_MSG, NOT_ADMIN_ERR_MSG;
+var init_const = __esm({
+  "shared/const.ts"() {
+    "use strict";
+    COOKIE_NAME = "app_session_id";
+    ONE_YEAR_MS = 1e3 * 60 * 60 * 24 * 365;
+    AXIOS_TIMEOUT_MS = 3e4;
+    UNAUTHED_ERR_MSG = "Please login (10001)";
+    NOT_ADMIN_ERR_MSG = "You do not have required permission (10002)";
   }
 });
 
@@ -632,10 +853,9 @@ var sdk_exports = {};
 __export(sdk_exports, {
   sdk: () => sdk
 });
-import axios from "axios";
 import { parse as parseCookieHeader } from "cookie";
 import { SignJWT, jwtVerify } from "jose";
-var isNonEmptyString, EXCHANGE_TOKEN_PATH, GET_USER_INFO_PATH, GET_USER_INFO_WITH_JWT_PATH, OAuthService, createOAuthHttpClient, SDKServer, sdk;
+var isNonEmptyString, SessionService, sdk;
 var init_sdk = __esm({
   "server/_core/sdk.ts"() {
     "use strict";
@@ -644,99 +864,7 @@ var init_sdk = __esm({
     init_db();
     init_env();
     isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
-    EXCHANGE_TOKEN_PATH = `/webdev.v1.WebDevAuthPublicService/ExchangeToken`;
-    GET_USER_INFO_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfo`;
-    GET_USER_INFO_WITH_JWT_PATH = `/webdev.v1.WebDevAuthPublicService/GetUserInfoWithJwt`;
-    OAuthService = class {
-      constructor(client) {
-        this.client = client;
-        console.log("[OAuth] Initialized with baseURL:", ENV.oAuthServerUrl);
-        if (!ENV.oAuthServerUrl) {
-          console.error(
-            "[OAuth] ERROR: OAUTH_SERVER_URL is not configured! Set OAUTH_SERVER_URL environment variable."
-          );
-        }
-      }
-      decodeState(state) {
-        const redirectUri = atob(state);
-        return redirectUri;
-      }
-      async getTokenByCode(code, state) {
-        const payload = {
-          clientId: ENV.appId,
-          grantType: "authorization_code",
-          code,
-          redirectUri: this.decodeState(state)
-        };
-        const { data } = await this.client.post(
-          EXCHANGE_TOKEN_PATH,
-          payload
-        );
-        return data;
-      }
-      async getUserInfoByToken(token) {
-        const { data } = await this.client.post(
-          GET_USER_INFO_PATH,
-          {
-            accessToken: token.accessToken
-          }
-        );
-        return data;
-      }
-    };
-    createOAuthHttpClient = () => axios.create({
-      baseURL: ENV.oAuthServerUrl,
-      timeout: AXIOS_TIMEOUT_MS
-    });
-    SDKServer = class {
-      client;
-      oauthService;
-      constructor(client = createOAuthHttpClient()) {
-        this.client = client;
-        this.oauthService = new OAuthService(this.client);
-      }
-      deriveLoginMethod(platforms, fallback) {
-        if (fallback && fallback.length > 0) return fallback;
-        if (!Array.isArray(platforms) || platforms.length === 0) return null;
-        const set = new Set(
-          platforms.filter((p) => typeof p === "string")
-        );
-        if (set.has("REGISTERED_PLATFORM_EMAIL")) return "email";
-        if (set.has("REGISTERED_PLATFORM_GOOGLE")) return "google";
-        if (set.has("REGISTERED_PLATFORM_APPLE")) return "apple";
-        if (set.has("REGISTERED_PLATFORM_MICROSOFT") || set.has("REGISTERED_PLATFORM_AZURE"))
-          return "microsoft";
-        if (set.has("REGISTERED_PLATFORM_GITHUB")) return "github";
-        const first = Array.from(set)[0];
-        return first ? first.toLowerCase() : null;
-      }
-      /**
-       * Exchange OAuth authorization code for access token
-       * @example
-       * const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-       */
-      async exchangeCodeForToken(code, state) {
-        return this.oauthService.getTokenByCode(code, state);
-      }
-      /**
-       * Get user information using access token
-       * @example
-       * const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-       */
-      async getUserInfo(accessToken) {
-        const data = await this.oauthService.getUserInfoByToken({
-          accessToken
-        });
-        const loginMethod = this.deriveLoginMethod(
-          data?.platforms,
-          data?.platform ?? data.platform ?? null
-        );
-        return {
-          ...data,
-          platform: loginMethod,
-          loginMethod
-        };
-      }
+    SessionService = class {
       parseCookies(cookieHeader) {
         if (!cookieHeader) {
           return /* @__PURE__ */ new Map();
@@ -745,19 +873,15 @@ var init_sdk = __esm({
         return new Map(Object.entries(parsed));
       }
       getSessionSecret() {
-        const secret = ENV.cookieSecret;
-        return new TextEncoder().encode(secret);
+        if (!ENV.cookieSecret) {
+          throw new Error("JWT_SECRET is not configured");
+        }
+        return new TextEncoder().encode(ENV.cookieSecret);
       }
-      /**
-       * Create a session token for a Manus user openId
-       * @example
-       * const sessionToken = await sdk.createSessionToken(userInfo.openId);
-       */
       async createSessionToken(openId, options = {}) {
         return this.signSession(
           {
             openId,
-            appId: ENV.appId,
             name: options.name || ""
           },
           options
@@ -770,7 +894,6 @@ var init_sdk = __esm({
         const secretKey = this.getSessionSecret();
         return new SignJWT({
           openId: payload.openId,
-          appId: payload.appId,
           name: payload.name
         }).setProtectedHeader({ alg: "HS256", typ: "JWT" }).setExpirationTime(expirationSeconds).sign(secretKey);
       }
@@ -784,39 +907,19 @@ var init_sdk = __esm({
           const { payload } = await jwtVerify(cookieValue, secretKey, {
             algorithms: ["HS256"]
           });
-          const { openId, appId, name } = payload;
-          if (!isNonEmptyString(openId) || !isNonEmptyString(appId) || !isNonEmptyString(name)) {
+          const { openId, name } = payload;
+          if (!isNonEmptyString(openId) || !isNonEmptyString(name)) {
             console.warn("[Auth] Session payload missing required fields");
             return null;
           }
           return {
             openId,
-            appId,
             name
           };
         } catch (error) {
           console.warn("[Auth] Session verification failed", String(error));
           return null;
         }
-      }
-      async getUserInfoWithJwt(jwtToken) {
-        const payload = {
-          jwtToken,
-          projectId: ENV.appId
-        };
-        const { data } = await this.client.post(
-          GET_USER_INFO_WITH_JWT_PATH,
-          payload
-        );
-        const loginMethod = this.deriveLoginMethod(
-          data?.platforms,
-          data?.platform ?? data.platform ?? null
-        );
-        return {
-          ...data,
-          platform: loginMethod,
-          loginMethod
-        };
       }
       async authenticateRequest(req) {
         const cookies = this.parseCookies(req.headers.cookie);
@@ -829,22 +932,6 @@ var init_sdk = __esm({
         const signedInAt = /* @__PURE__ */ new Date();
         let user = await getUserByOpenId(sessionUserId);
         if (!user) {
-          try {
-            const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
-            await upsertUser({
-              openId: userInfo.openId,
-              name: userInfo.name || null,
-              email: userInfo.email ?? null,
-              loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-              lastSignedIn: signedInAt
-            });
-            user = await getUserByOpenId(userInfo.openId);
-          } catch (error) {
-            console.error("[Auth] Failed to sync user from OAuth:", error);
-            throw ForbiddenError("Failed to sync user info");
-          }
-        }
-        if (!user) {
           throw ForbiddenError("User not found");
         }
         await upsertUser({
@@ -854,66 +941,7 @@ var init_sdk = __esm({
         return user;
       }
     };
-    sdk = new SDKServer();
-  }
-});
-
-// server/googleAuth.ts
-var googleAuth_exports = {};
-__export(googleAuth_exports, {
-  configureGoogleAuth: () => configureGoogleAuth,
-  isGoogleAuthEnabled: () => isGoogleAuthEnabled
-});
-import passport from "passport";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-function configureGoogleAuth() {
-  if (googleStrategyConfigured) return;
-  const clientID = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const callbackURL = process.env.GOOGLE_CALLBACK_URL;
-  if (!clientID || !clientSecret || !callbackURL) {
-    console.warn("[Google Auth] Missing configuration. Google Sign-In will be disabled.");
-    return;
-  }
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID,
-        clientSecret,
-        callbackURL
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const name = profile.displayName;
-          const googleId = profile.id;
-          if (!email) {
-            return done(new Error("No email found in Google profile"));
-          }
-          return done(null, {
-            provider: "google",
-            providerId: googleId,
-            email,
-            name,
-            loginMethod: "google"
-          });
-        } catch (error) {
-          return done(error);
-        }
-      }
-    )
-  );
-  googleStrategyConfigured = true;
-  console.log("[Google Auth] Strategy configured");
-}
-function isGoogleAuthEnabled() {
-  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_CALLBACK_URL);
-}
-var googleStrategyConfigured;
-var init_googleAuth = __esm({
-  "server/googleAuth.ts"() {
-    "use strict";
-    googleStrategyConfigured = false;
+    sdk = new SessionService();
   }
 });
 
@@ -978,6 +1006,7 @@ var init_storage = __esm({
 var passwordAuth_exports = {};
 __export(passwordAuth_exports, {
   authenticateWithPassword: () => authenticateWithPassword,
+  bootstrapOwnerPassword: () => bootstrapOwnerPassword,
   generatePasswordResetToken: () => generatePasswordResetToken,
   hashPassword: () => hashPassword,
   resetPassword: () => resetPassword,
@@ -1103,12 +1132,52 @@ async function resetPassword(userId, newPassword) {
 async function setUserPassword(userId, password) {
   return resetPassword(userId, password);
 }
+async function bootstrapOwnerPassword(email, password) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail || !password) {
+    return false;
+  }
+  const db = await getDb();
+  if (!db) {
+    console.error("[PasswordAuth] Database not available for owner bootstrap");
+    return false;
+  }
+  try {
+    let result = await db.select().from(users).where(eq2(users.email, normalizedEmail)).limit(1);
+    if (result.length === 0) {
+      await upsertUser({
+        openId: `email:${normalizedEmail}`,
+        email: normalizedEmail,
+        name: normalizedEmail,
+        loginMethod: "password"
+      });
+      result = await db.select().from(users).where(eq2(users.email, normalizedEmail)).limit(1);
+    }
+    if (result.length === 0) {
+      console.error("[PasswordAuth] Failed to create owner account for bootstrap:", normalizedEmail);
+      return false;
+    }
+    const owner = result[0];
+    const hashedPassword = await hashPassword(password);
+    await db.update(users).set({
+      password: hashedPassword,
+      loginMethod: "password",
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq2(users.id, owner.id));
+    console.log("[PasswordAuth] Owner password bootstrap complete for:", normalizedEmail);
+    return true;
+  } catch (error) {
+    console.error("[PasswordAuth] Error bootstrapping owner password:", error);
+    return false;
+  }
+}
 var SALT_ROUNDS, RESET_TOKEN_EXPIRY_HOURS;
 var init_passwordAuth = __esm({
   "server/passwordAuth.ts"() {
     "use strict";
     init_db();
     init_schema();
+    init_db();
     SALT_ROUNDS = 10;
     RESET_TOKEN_EXPIRY_HOURS = 24;
   }
@@ -1996,6 +2065,9 @@ async function getUserEvents(userId) {
     eventTime: events.eventTime,
     location: events.location,
     type: events.type,
+    feeAmount: events.feeAmount,
+    paymentInstructions: events.paymentInstructions,
+    registrationNotice: events.registrationNotice,
     maxParticipants: events.maxParticipants,
     registrationDeadline: events.registrationDeadline,
     status: events.status,
@@ -2127,6 +2199,7 @@ var init_icalGenerator = __esm({
 });
 
 // server/_core/index.ts
+init_googleAuth();
 import "dotenv/config";
 import express2 from "express";
 import cookieParser from "cookie-parser";
@@ -2135,9 +2208,11 @@ import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 
-// server/_core/oauth.ts
-init_const();
+// server/googleAuthRoutes.ts
 init_db();
+init_const();
+import { Router } from "express";
+import passport2 from "passport";
 
 // server/_core/cookies.ts
 function isSecureRequest(req) {
@@ -2156,56 +2231,7 @@ function getSessionCookieOptions(req) {
   };
 }
 
-// server/_core/oauth.ts
-init_sdk();
-function getQueryParam(req, key) {
-  const value = req.query[key];
-  return typeof value === "string" ? value : void 0;
-}
-function registerOAuthRoutes(app) {
-  app.get("/api/oauth/callback", async (req, res) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-      if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
-        return;
-      }
-      await upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
-        lastSignedIn: /* @__PURE__ */ new Date()
-      });
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS
-      });
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-      res.redirect(302, "/");
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
-    }
-  });
-}
-
-// server/_core/index.ts
-init_googleAuth();
-
 // server/googleAuthRoutes.ts
-init_db();
-init_const();
-import { Router } from "express";
-import passport2 from "passport";
 init_sdk();
 function createGoogleAuthRoutes() {
   const router2 = Router();
@@ -2235,7 +2261,7 @@ function createGoogleAuthRoutes() {
         });
         const token = await sdk.createSessionToken(openId, { name: user.name || "" });
         const cookieOptions = getSessionCookieOptions(req);
-        res.cookie(COOKIE_NAME, token, cookieOptions);
+        res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
         res.redirect("/");
       } catch (error) {
         console.error("[Google Auth] Callback error:", error);
@@ -2397,6 +2423,8 @@ var manageNewsProcedure = protectedProcedure.use(requirePermission("manage_news"
 var manageMembersProcedure = protectedProcedure.use(requirePermission("manage_members"));
 var manageRolesProcedure = protectedProcedure.use(requirePermission("manage_roles"));
 var manageUsersProcedure = protectedProcedure.use(requirePermission("manage_users"));
+var manageEventsProcedure = protectedProcedure.use(requirePermission("manage_events"));
+var manageGalleryProcedure = protectedProcedure.use(requirePermission("manage_gallery"));
 var manageCMSProcedure = protectedProcedure.use(requirePermission("manage_cms"));
 
 // server/_core/systemRouter.ts
@@ -2429,6 +2457,38 @@ import { TRPCError as TRPCError3 } from "@trpc/server";
 import { z as z2 } from "zod";
 import { and as and3, desc as desc3, eq as eq4, isNotNull, gte, sql as sql3 } from "drizzle-orm";
 import crypto3 from "crypto";
+function normalizePermissions2(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => typeof item === "string");
+      }
+    } catch {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+function normalizeTags(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => typeof item === "string");
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item) => typeof item === "string");
+      }
+    } catch {
+      return value.split(",").map((item) => item.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
 var appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
@@ -2445,9 +2505,8 @@ var appRouter = router({
       const { isGoogleAuthEnabled: isGoogleAuthEnabled2 } = await Promise.resolve().then(() => (init_googleAuth(), googleAuth_exports));
       return {
         google: isGoogleAuthEnabled2(),
-        password: true,
+        password: true
         // Password-based login for registered members
-        manus: true
       };
     }),
     // Password-based login
@@ -2689,7 +2748,11 @@ var appRouter = router({
       if (!user[0] || user[0].role !== "admin") {
         throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
       }
-      return await db.select().from(roles);
+      const allRoles = await db.select().from(roles);
+      return allRoles.map((role) => ({
+        ...role,
+        permissions: normalizePermissions2(role.permissions)
+      }));
     }),
     // Create new role (huvudadmin only)
     create: protectedProcedure.input(z2.object({
@@ -2789,7 +2852,14 @@ var appRouter = router({
       if (!userRole[0] || userRole[0].name !== "huvudadmin") {
         throw new TRPCError3({ code: "FORBIDDEN", message: "Only huvudadmin can assign roles" });
       }
-      await db.update(users).set({ roleId: input.roleId }).where(eq4(users.id, input.userId));
+      const targetRole = await db.select().from(roles).where(eq4(roles.id, input.roleId)).limit(1);
+      if (!targetRole[0]) {
+        throw new TRPCError3({ code: "BAD_REQUEST", message: "Role not found" });
+      }
+      await db.update(users).set({
+        roleId: input.roleId,
+        role: "admin"
+      }).where(eq4(users.id, input.userId));
       return { success: true };
     })
   }),
@@ -2798,28 +2868,33 @@ var appRouter = router({
     list: publicProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      return await db.select().from(galleryPhotos).orderBy(desc3(galleryPhotos.createdAt));
+      const photos = await db.select().from(galleryPhotos).orderBy(desc3(galleryPhotos.createdAt));
+      return photos.map((photo) => ({
+        ...photo,
+        tags: normalizeTags(photo.tags)
+      }));
     }),
     // Get photos by category (public)
     byCategory: publicProcedure.input(z2.object({ category: z2.string() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      return await db.select().from(galleryPhotos).where(eq4(galleryPhotos.category, input.category)).orderBy(desc3(galleryPhotos.createdAt));
+      const photos = await db.select().from(galleryPhotos).where(eq4(galleryPhotos.category, input.category)).orderBy(desc3(galleryPhotos.createdAt));
+      return photos.map((photo) => ({
+        ...photo,
+        tags: normalizeTags(photo.tags)
+      }));
     }),
-    // Upload photo with automatic compression (admin only)
-    upload: protectedProcedure.input(z2.object({
+    // Upload photo with automatic compression
+    upload: manageGalleryProcedure.input(z2.object({
       title: z2.string().min(1),
       description: z2.string().optional(),
       category: z2.string().optional(),
+      tags: z2.array(z2.string()).optional(),
       imageBase64: z2.string()
       // Base64 encoded image
     })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       const imageBuffer = Buffer.from(input.imageBase64, "base64");
       const { processAndUploadImage: processAndUploadImage2 } = await Promise.resolve().then(() => (init_imageProcessor(), imageProcessor_exports));
       const processedImages = await processAndUploadImage2(imageBuffer, input.title, "gallery");
@@ -2832,54 +2907,46 @@ var appRouter = router({
         mediumUrl: processedImages.medium.url,
         originalUrl: processedImages.original.url,
         category: input.category,
+        tags: input.tags || [],
         uploadedBy: ctx.user.id
       });
       return { success: true, images: processedImages };
     }),
-    // Create photo (admin only) - Legacy method
-    create: protectedProcedure.input(z2.object({
+    // Create photo - Legacy method
+    create: manageGalleryProcedure.input(z2.object({
       title: z2.string().min(1),
       description: z2.string().optional(),
       imageUrl: z2.string().url(),
-      category: z2.string().optional()
+      category: z2.string().optional(),
+      tags: z2.array(z2.string()).optional()
     })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       await db.insert(galleryPhotos).values({
         ...input,
+        tags: input.tags || [],
         uploadedBy: ctx.user.id
       });
       return { success: true };
     }),
-    // Update photo (admin only)
-    update: protectedProcedure.input(z2.object({
+    // Update photo
+    update: manageGalleryProcedure.input(z2.object({
       id: z2.number(),
       title: z2.string().optional(),
       description: z2.string().optional(),
-      category: z2.string().optional()
+      category: z2.string().optional(),
+      tags: z2.array(z2.string()).optional()
     })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       const { id, ...updateData } = input;
       await db.update(galleryPhotos).set(updateData).where(eq4(galleryPhotos.id, id));
       return { success: true };
     }),
-    // Delete photo (admin only)
-    delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    // Delete photo
+    delete: manageGalleryProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       await db.delete(galleryPhotos).where(eq4(galleryPhotos.id, input.id));
       return { success: true };
     })
@@ -2891,24 +2958,23 @@ var appRouter = router({
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       return await db.select().from(events).where(gte(events.eventDate, /* @__PURE__ */ new Date())).orderBy(events.eventDate);
     }),
-    // Get all events (admin)
-    listAll: protectedProcedure.query(async ({ ctx }) => {
+    // Get all events for editors/admins
+    listAll: manageEventsProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       return await db.select().from(events).orderBy(desc3(events.eventDate));
     }),
-    // Create event (admin only)
-    create: protectedProcedure.input(z2.object({
+    // Create event
+    create: manageEventsProcedure.input(z2.object({
       title: z2.string().min(1),
       description: z2.string().optional(),
       eventDate: z2.date(),
       eventTime: z2.string().optional(),
       location: z2.string().optional(),
       type: z2.string().optional(),
+      feeAmount: z2.string().optional(),
+      paymentInstructions: z2.string().optional(),
+      registrationNotice: z2.string().optional(),
       maxParticipants: z2.number().optional(),
       registrationDeadline: z2.date().optional(),
       status: z2.enum(["draft", "published", "cancelled", "completed"]).optional(),
@@ -2916,10 +2982,6 @@ var appRouter = router({
     })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       await db.insert(events).values({
         ...input,
         allowWaitlist: input.allowWaitlist ? 1 : 0,
@@ -2927,8 +2989,8 @@ var appRouter = router({
       });
       return { success: true };
     }),
-    // Update event (admin only)
-    update: protectedProcedure.input(z2.object({
+    // Update event
+    update: manageEventsProcedure.input(z2.object({
       id: z2.number(),
       title: z2.string().optional(),
       description: z2.string().optional(),
@@ -2936,17 +2998,16 @@ var appRouter = router({
       eventTime: z2.string().optional(),
       location: z2.string().optional(),
       type: z2.string().optional(),
+      feeAmount: z2.string().optional(),
+      paymentInstructions: z2.string().optional(),
+      registrationNotice: z2.string().optional(),
       maxParticipants: z2.number().optional(),
       registrationDeadline: z2.date().optional(),
       status: z2.enum(["draft", "published", "cancelled", "completed"]).optional(),
       allowWaitlist: z2.boolean().optional()
-    })).mutation(async ({ ctx, input }) => {
+    })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       const { id, allowWaitlist, ...updateData } = input;
       await db.update(events).set({
         ...updateData,
@@ -2954,25 +3015,17 @@ var appRouter = router({
       }).where(eq4(events.id, id));
       return { success: true };
     }),
-    // Delete event (admin only)
-    delete: protectedProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ ctx, input }) => {
+    // Delete event
+    delete: manageEventsProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       await db.delete(events).where(eq4(events.id, input.id));
       return { success: true };
     }),
-    // Get event with registrations (admin only)
-    getWithRegistrations: protectedProcedure.input(z2.object({ id: z2.number() })).query(async ({ ctx, input }) => {
+    // Get event with registrations
+    getWithRegistrations: manageEventsProcedure.input(z2.object({ id: z2.number() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
-      const user = await db.select().from(users).where(eq4(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== "admin") {
-        throw new TRPCError3({ code: "FORBIDDEN", message: "Access denied" });
-      }
       return await getEventWithRegistrations(input.id);
     }),
     // Register for event (authenticated users)
@@ -3048,13 +3101,13 @@ var appRouter = router({
       return await db.select().from(pageContent).where(eq4(pageContent.page, input.page)).orderBy(pageContent.order);
     }),
     // Get all page content (admin)
-    getAllContent: adminProcedure.query(async () => {
+    getAllContent: manageCMSProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       return await db.select().from(pageContent).orderBy(pageContent.page, pageContent.order);
     }),
     // Update page content (admin)
-    updateContent: adminProcedure.input(z2.object({
+    updateContent: manageCMSProcedure.input(z2.object({
       id: z2.number(),
       content: z2.string().optional(),
       order: z2.number().optional(),
@@ -3067,7 +3120,7 @@ var appRouter = router({
       return { success: true };
     }),
     // Create new content section (admin)
-    createContent: adminProcedure.input(z2.object({
+    createContent: manageCMSProcedure.input(z2.object({
       page: z2.string(),
       sectionKey: z2.string(),
       type: z2.string(),
@@ -3082,7 +3135,7 @@ var appRouter = router({
       });
       return { success: true };
     }),
-    updatePageContent: protectedProcedure.input(z2.object({ id: z2.number(), content: z2.string().nullable() })).mutation(async ({ ctx, input }) => {
+    updatePageContent: manageCMSProcedure.input(z2.object({ id: z2.number(), content: z2.string().nullable() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       const [current] = await db.select().from(pageContent).where(eq4(pageContent.id, input.id)).limit(1);
@@ -3096,7 +3149,7 @@ var appRouter = router({
       await db.update(pageContent).set({ content: input.content }).where(eq4(pageContent.id, input.id));
       return { success: true };
     }),
-    getContentHistory: protectedProcedure.input(z2.object({ contentId: z2.number() })).query(async ({ input }) => {
+    getContentHistory: manageCMSProcedure.input(z2.object({ contentId: z2.number() })).query(async ({ input }) => {
       const db = await getDb();
       if (!db) return [];
       const history = await db.select({
@@ -3108,7 +3161,7 @@ var appRouter = router({
       }).from(contentHistory).leftJoin(users, eq4(contentHistory.updatedBy, users.id)).where(eq4(contentHistory.contentId, input.contentId)).orderBy(desc3(contentHistory.createdAt)).limit(20);
       return history;
     }),
-    restoreContentVersion: protectedProcedure.input(z2.object({ contentId: z2.number(), historyId: z2.number() })).mutation(async ({ ctx, input }) => {
+    restoreContentVersion: manageCMSProcedure.input(z2.object({ contentId: z2.number(), historyId: z2.number() })).mutation(async ({ ctx, input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       const [history] = await db.select().from(contentHistory).where(eq4(contentHistory.id, input.historyId)).limit(1);
@@ -3125,7 +3178,7 @@ var appRouter = router({
       return { success: true };
     }),
     // Delete content section (admin)
-    deleteContent: adminProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
+    deleteContent: manageCMSProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       await db.delete(pageContent).where(eq4(pageContent.id, input.id));
@@ -3138,7 +3191,7 @@ var appRouter = router({
       return await db.select().from(siteSettings);
     }),
     // Update site setting (admin)
-    updateSetting: adminProcedure.input(z2.object({
+    updateSetting: manageCMSProcedure.input(z2.object({
       key: z2.string(),
       value: z2.string(),
       type: z2.string().optional()
@@ -3164,12 +3217,12 @@ var appRouter = router({
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       return await db.select().from(boardMembers).where(eq4(boardMembers.active, 1)).orderBy(boardMembers.order);
     }),
-    getAllBoardMembers: adminProcedure.query(async () => {
+    getAllBoardMembers: manageCMSProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       return await db.select().from(boardMembers).orderBy(boardMembers.order);
     }),
-    createBoardMember: adminProcedure.input(z2.object({
+    createBoardMember: manageCMSProcedure.input(z2.object({
       name: z2.string(),
       role: z2.string(),
       phone: z2.string().optional(),
@@ -3182,7 +3235,7 @@ var appRouter = router({
       await db.insert(boardMembers).values(input);
       return { success: true };
     }),
-    updateBoardMember: adminProcedure.input(z2.object({
+    updateBoardMember: manageCMSProcedure.input(z2.object({
       id: z2.number(),
       name: z2.string().optional(),
       role: z2.string().optional(),
@@ -3198,7 +3251,7 @@ var appRouter = router({
       await db.update(boardMembers).set(updateData).where(eq4(boardMembers.id, id));
       return { success: true };
     }),
-    deleteBoardMember: adminProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
+    deleteBoardMember: manageCMSProcedure.input(z2.object({ id: z2.number() })).mutation(async ({ input }) => {
       const db = await getDb();
       if (!db) throw new TRPCError3({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
       await db.delete(boardMembers).where(eq4(boardMembers.id, input.id));
@@ -3480,6 +3533,9 @@ async function createContext(opts) {
   };
 }
 
+// server/_core/index.ts
+init_env();
+
 // server/_core/vite.ts
 import express from "express";
 import fs from "fs";
@@ -3534,6 +3590,7 @@ function serveStatic(app) {
 }
 
 // server/_core/index.ts
+init_db();
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -3554,12 +3611,29 @@ async function findAvailablePort(startPort = 3e3) {
 async function startServer() {
   const app = express2();
   const server = createServer(app);
+  const preferredPort = parseInt(process.env.PORT || "3000");
+  console.log("[Startup] Booting Gamla SSK server");
+  console.log(`[Startup] NODE_ENV=${process.env.NODE_ENV || "undefined"}`);
+  console.log(`[Startup] PORT=${preferredPort}`);
+  console.log(`[Startup] Database configured=${process.env.DATABASE_URL ? "yes" : "no"}`);
+  console.log(`[Startup] OWNER_EMAIL configured=${ENV.ownerEmail ? "yes" : "no"}`);
+  console.log(`[Startup] ADMIN_PASSWORD configured=${ENV.adminPassword ? "yes" : "no"}`);
+  if (ENV.ownerEmail) {
+    console.log(`[Startup] OWNER_EMAIL value=${ENV.ownerEmail}`);
+  }
+  if (process.env.DATABASE_URL) {
+    await ensureSchemaCompatibility();
+  }
+  if (ENV.ownerEmail && ENV.adminPassword) {
+    const { bootstrapOwnerPassword: bootstrapOwnerPassword2 } = await Promise.resolve().then(() => (init_passwordAuth(), passwordAuth_exports));
+    const bootstrapped = await bootstrapOwnerPassword2(ENV.ownerEmail, ENV.adminPassword);
+    console.log(`[Startup] Owner password bootstrap=${bootstrapped ? "ok" : "skipped"}`);
+  }
   app.use(express2.json({ limit: "50mb" }));
   app.use(express2.urlencoded({ limit: "50mb", extended: true }));
   app.use(cookieParser());
   app.use(passport3.initialize());
   configureGoogleAuth();
-  registerOAuthRoutes(app);
   app.use(createGoogleAuthRoutes());
   app.get("/api/calendar/feed.ics", async (req, res) => {
     const { getAllEvents: getAllEvents2 } = await Promise.resolve().then(() => (init_eventDb(), eventDb_exports));
@@ -3599,13 +3673,15 @@ async function startServer() {
     serveStatic(app);
   }
   console.log("[Cron] Automatic payment reminders DISABLED - use manual reminders in admin panel");
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
-  if (port !== preferredPort) {
+  const port = process.env.NODE_ENV === "production" ? preferredPort : await findAvailablePort(preferredPort);
+  if (process.env.NODE_ENV !== "production" && port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.on("error", (error) => {
+    console.error("[Startup] Server failed to listen:", error);
+  });
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 startServer().catch(console.error);

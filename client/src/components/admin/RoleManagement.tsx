@@ -15,9 +15,34 @@ const AVAILABLE_PERMISSIONS = [
   { id: "manage_roles", label: "Hantera roller", description: "Skapa, redigera och ta bort roller" },
   { id: "manage_users", label: "Hantera användare", description: "Tilldela roller till användare" },
   { id: "manage_news", label: "Hantera nyheter", description: "Skapa, redigera och ta bort nyheter" },
+  { id: "manage_events", label: "Hantera evenemang", description: "Skapa, redigera och ta bort evenemang" },
+  { id: "manage_gallery", label: "Hantera bildgalleri", description: "Ladda upp, redigera och organisera bilder, album och taggar" },
+  { id: "manage_cms", label: "Hantera CMS", description: "Skapa och redigera sektioner, undersidor och webbplatsinnehåll" },
   { id: "manage_members", label: "Hantera medlemmar", description: "Godkänna och hantera medlemsansökningar" },
   { id: "view_members", label: "Visa medlemmar", description: "Se medlemsregister med kontaktuppgifter" },
 ];
+
+function normalizePermissions(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
 
 export default function RoleManagement() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -86,7 +111,7 @@ export default function RoleManagement() {
     setFormData({
       name: role.name,
       description: role.description || "",
-      permissions: role.permissions || [],
+      permissions: normalizePermissions(role.permissions),
     });
   };
 
@@ -290,7 +315,7 @@ export default function RoleManagement() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {(role.permissions as string[])?.map((permission) => {
+                {normalizePermissions(role.permissions).map((permission) => {
                   const permDef = AVAILABLE_PERMISSIONS.find(p => p.id === permission);
                   return (
                     <span

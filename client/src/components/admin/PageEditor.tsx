@@ -42,6 +42,976 @@ interface ContentSection {
   published: number;
 }
 
+const PAGE_SECTION_TEMPLATES: Record<
+  string,
+  Array<{
+    sectionKey: string;
+    type: string;
+    content: string;
+    label: string;
+    description: string;
+  }>
+> = {
+  site: [
+    {
+      sectionKey: "footer_social_title",
+      type: "text",
+      content: "SSK i sociala medier",
+      label: "Footer: social rubrik",
+      description: "Rubriken för sociala medier i footern.",
+    },
+    {
+      sectionKey: "footer_social_links",
+      type: "html",
+      content: "<p>Facebook</p><p>Instagram</p><p>X</p><p>YouTube</p>",
+      label: "Footer: sociala länkar",
+      description: "Raderna under sociala medier i footern.",
+    },
+    {
+      sectionKey: "footer_contact_title",
+      type: "text",
+      content: "Kontakt",
+      label: "Footer: kontaktrubrik",
+      description: "Rubriken för kontaktkolumnen i footern.",
+    },
+    {
+      sectionKey: "footer_contact_lines",
+      type: "html",
+      content: "<p>Föreningen Gamla SSK-are</p><p>Stöd, historia och gemenskap</p><p>Södertälje</p>",
+      label: "Footer: kontaktrader",
+      description: "Kontaktinformationen i footern.",
+    },
+    {
+      sectionKey: "footer_links_title",
+      type: "text",
+      content: "Snabblänkar",
+      label: "Footer: länkrubrik",
+      description: "Rubriken för snabblänkar i footern.",
+    },
+    {
+      sectionKey: "footer_bottom_text",
+      type: "text",
+      content: "Powered by Gamla SSK",
+      label: "Footer: nedertext",
+      description: "Den nedersta raden under loggan i footern.",
+    },
+  ],
+  home: [
+    {
+      sectionKey: "news_section_title",
+      type: "text",
+      content: "Senaste nyheterna",
+      label: "Nyhetsrubrik",
+      description: "Rubriken ovanför nyhetskorten på startsidan.",
+    },
+    {
+      sectionKey: "news_section_description",
+      type: "text",
+      content: "Här hittar du de senaste uppdateringarna, nyheterna och händelserna från föreningen.",
+      label: "Nyhetsbeskrivning",
+      description: "Ingressen under nyhetsrubriken på startsidan.",
+    },
+  ],
+  statutes: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Stadgar och information",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Föreningens bakgrund, verksamhet och aktuella stadgar samlade på ett ställe.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "intro_title",
+      type: "text",
+      content: "Om Föreningen Gamla SSK-are",
+      label: "Intro-rubrik",
+      description: "Rubriken för inledningsdelen på sidan.",
+    },
+    {
+      sectionKey: "timeline_title",
+      type: "text",
+      content: "Historisk tidslinje",
+      label: "Tidslinje: rubrik",
+      description: "Rubriken för tidslinjesektionen.",
+    },
+    {
+      sectionKey: "timeline_1_title",
+      type: "text",
+      content: "1936",
+      label: "Tidslinje 1: rubrik",
+      description: "Rubriken för första kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_1_description",
+      type: "text",
+      content: "Beslut om bildande",
+      label: "Tidslinje 1: underrubrik",
+      description: "Underrubriken för första kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_1_content",
+      type: "text",
+      content: "Beslut togs att starta en stödförening för Södertälje SK.",
+      label: "Tidslinje 1: text",
+      description: "Brödtexten för första kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_2_title",
+      type: "text",
+      content: "25 augusti 1937",
+      label: "Tidslinje 2: rubrik",
+      description: "Rubriken för andra kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_2_description",
+      type: "text",
+      content: "Föreningen bildas officiellt",
+      label: "Tidslinje 2: underrubrik",
+      description: "Underrubriken för andra kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_2_content",
+      type: "text",
+      content: "Föreningen Gamla SSK-are bildades officiellt med Carl Abrahamsson, \"Calle Aber\", som förste ordförande. Hans namn lever vidare i SSK:s restaurang \"Calle Aber\" som öppnade hösten 2021.",
+      label: "Tidslinje 2: text",
+      description: "Brödtexten för andra kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_3_title",
+      type: "text",
+      content: "1937-idag",
+      label: "Tidslinje 3: rubrik",
+      description: "Rubriken för tredje kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_3_description",
+      type: "text",
+      content: "Över 85 år av stöd",
+      label: "Tidslinje 3: underrubrik",
+      description: "Underrubriken för tredje kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "timeline_3_content",
+      type: "text",
+      content: "Föreningen har under alla år stöttat moderklubben genom ideellt arbete. Idag har vi över 300 medlemmar och bidrar årligen med över 1 miljon kronor till Södertälje SK.",
+      label: "Tidslinje 3: text",
+      description: "Brödtexten för tredje kortet i tidslinjen.",
+    },
+    {
+      sectionKey: "organization_title",
+      type: "text",
+      content: "Styrelse och organisation",
+      label: "Organisation: rubrik",
+      description: "Rubriken för styrelse- och organisationsdelen.",
+    },
+    {
+      sectionKey: "other_members_title",
+      type: "text",
+      content: "Övriga styrelseledamöter",
+      label: "Organisation: övriga ledamöter",
+      description: "Rubriken för övriga styrelseledamöter.",
+    },
+    {
+      sectionKey: "deputies_title",
+      type: "text",
+      content: "Suppleanter",
+      label: "Organisation: suppleanter",
+      description: "Rubriken för suppleanterna.",
+    },
+    {
+      sectionKey: "statutes_title",
+      type: "text",
+      content: "Stadgar",
+      label: "Stadgar: rubrik",
+      description: "Rubriken för stadgesektionen.",
+    },
+    {
+      sectionKey: "statutes_body_html",
+      type: "html",
+      content: "<section><h3>§ 1 Namn och säte</h3><p>Föreningens namn är Föreningen Gamla SSK-are. Föreningen har sitt säte i Södertälje kommun.</p></section><section><h3>§ 2 Ändamål</h3><p>Föreningen har till ändamål att stödja Södertälje SK ekonomiskt och socialt samt att främja gemenskap bland föreningens medlemmar och supportrar till SSK.</p></section><section><h3>§ 3 Medlemskap</h3><p>Medlem i föreningen kan vara den som:</p><ul><li>Är supporter till Södertälje SK</li><li>Betalar fastställd medlemsavgift (för närvarande 150 kr/år)</li><li>Godkänner föreningens stadgar</li></ul><p>Namnet \"Gamla SSK-are\" betyder inte att man måste vara åldersmässigt gammal, utan att man varit SSK-supporter en längre tid.</p></section><section><h3>§ 4 Medlemsavgift</h3><p>Medlemsavgiftens storlek fastställs årligen av årsmötet.</p></section><section><h3>§ 5 Styrelse</h3><p>Föreningens styrelse består av:</p><ul><li>Ordförande</li><li>Vice ordförande</li><li>Sekreterare</li><li>Kassör</li><li>Minst 3 övriga ledamöter</li><li>2 suppleanter</li></ul><p>Styrelsen väljs på årsmötet för en mandatperiod om ett år.</p></section><section><h3>§ 6 Årsmöte</h3><p>Årsmöte hålls senast i mars månad varje år. Kallelse till årsmötet ska skickas ut senast två veckor före mötet.</p></section><section><h3>§ 7 Verksamhetsår</h3><p>Föreningens verksamhetsår och räkenskapsår omfattar kalenderår.</p></section><section><h3>§ 8 Stadgeändring</h3><p>För ändring av dessa stadgar krävs beslut av årsmötet med minst 2/3 majoritet.</p></section><section><h3>§ 9 Upplösning</h3><p>För upplösning av föreningen krävs beslut vid två på varandra följande årsmöten med minst 2/3 majoritet. Vid upplösning ska föreningens tillgångar tillfalla Södertälje SK.</p></section>",
+      label: "Stadgar: innehåll",
+      description: "Hela stadgetexten som visas i stadgesektionen.",
+    },
+    {
+      sectionKey: "statutes_footer_note",
+      type: "text",
+      content: "Dessa stadgar antogs vid årsmötet 1937 och har därefter reviderats vid årsmöten.",
+      label: "Stadgar: fotnot",
+      description: "Den kursiva notisen längst ned i stadgesektionen.",
+    },
+    {
+      sectionKey: "activities_title",
+      type: "text",
+      content: "Verksamhet",
+      label: "Verksamhet: rubrik",
+      description: "Rubriken för verksamhetssektionen.",
+    },
+    {
+      sectionKey: "activity_1_title",
+      type: "text",
+      content: "Folkspels-bingolotter",
+      label: "Verksamhet 1: rubrik",
+      description: "Rubriken för första verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_1_content",
+      type: "text",
+      content: "Vår huvudsakliga verksamhet är försäljning av bingolotter och sverigelotter på ICA Maxi Vasa, ICA Maxi Moraberg och Stora Coop Vasa. Alla intäkter går direkt till Södertälje SK.",
+      label: "Verksamhet 1: text",
+      description: "Brödtexten för första verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_2_title",
+      type: "text",
+      content: "Årlig vårfest",
+      label: "Verksamhet 2: rubrik",
+      description: "Rubriken för andra verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_2_content",
+      type: "text",
+      content: "Varje år arrangerar vi en vårfest där medlemmar, supportrar och SSK-profiler samlas för mingel, mat och underhållning. Ett tillfälle att fira föreningen och hockeyn tillsammans.",
+      label: "Verksamhet 2: text",
+      description: "Brödtexten för andra verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_3_title",
+      type: "text",
+      content: "Ekonomiskt stöd",
+      label: "Verksamhet 3: rubrik",
+      description: "Rubriken för tredje verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_3_content",
+      type: "text",
+      content: "Genom medlemmarnas ideella arbete bidrar vi årligen med över 1 miljon kronor till Södertälje SK. Detta stöd är avgörande för klubbens fortsatta verksamhet.",
+      label: "Verksamhet 3: text",
+      description: "Brödtexten för tredje verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_4_title",
+      type: "text",
+      content: "Gemenskap",
+      label: "Verksamhet 4: rubrik",
+      description: "Rubriken för fjärde verksamhetskortet.",
+    },
+    {
+      sectionKey: "activity_4_content",
+      type: "text",
+      content: "Vi skapar mötesplatser för SSK-supportrar att träffas, dela minnen och tillsammans stödja vår älskade klubb. Medlemskap är öppet för alla som brinner för SSK.",
+      label: "Verksamhet 4: text",
+      description: "Brödtexten för fjärde verksamhetskortet.",
+    },
+  ],
+  documents: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Dokumentbibliotek",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Hitta stadgar, protokoll och andra viktiga dokument på samma plats.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "loading_text",
+      type: "text",
+      content: "Laddar dokument...",
+      label: "Laddningstext",
+      description: "Texten som visas medan dokumenten hämtas.",
+    },
+    {
+      sectionKey: "login_notice_title",
+      type: "text",
+      content: "Logga in för att se alla dokument",
+      label: "Inloggningsruta: rubrik",
+      description: "Rubriken i informationsrutan för oinloggade besökare.",
+    },
+    {
+      sectionKey: "login_notice_description",
+      type: "text",
+      content: "Vissa dokument är endast tillgängliga för medlemmar.",
+      label: "Inloggningsruta: beskrivning",
+      description: "Beskrivningen i informationsrutan för oinloggade besökare.",
+    },
+    {
+      sectionKey: "login_button_label",
+      type: "text",
+      content: "Logga in",
+      label: "Inloggningsruta: knapptext",
+      description: "Texten på inloggningsknappen.",
+    },
+    {
+      sectionKey: "all_tab_label",
+      type: "text",
+      content: "Alla dokument",
+      label: "Alla-flik: etikett",
+      description: "Texten på fliken som visar alla dokument.",
+    },
+    {
+      sectionKey: "empty_state_title",
+      type: "text",
+      content: "Inga dokument tillgängliga.",
+      label: "Tomläge: alla dokument",
+      description: "Texten som visas när inga dokument finns alls.",
+    },
+    {
+      sectionKey: "empty_category_title",
+      type: "text",
+      content: "Inga dokument i denna kategori.",
+      label: "Tomläge: kategori",
+      description: "Texten som visas när vald kategori är tom.",
+    },
+    {
+      sectionKey: "file_size_label",
+      type: "text",
+      content: "Storlek",
+      label: "Filstorlek: etikett",
+      description: "Etiketten framför filstorleken i dokumentlistan.",
+    },
+    {
+      sectionKey: "uploaded_label",
+      type: "text",
+      content: "Uppladdad",
+      label: "Uppladdad: etikett",
+      description: "Etiketten framför uppladdningsdatumet i dokumentlistan.",
+    },
+    {
+      sectionKey: "view_button_label",
+      type: "text",
+      content: "Visa",
+      label: "Visa-knapp",
+      description: "Texten på knappen för att öppna ett dokument.",
+    },
+    {
+      sectionKey: "download_button_label",
+      type: "text",
+      content: "Ladda ner",
+      label: "Ladda ner-knapp",
+      description: "Texten på knappen för att ladda ner ett dokument.",
+    },
+  ],
+  calendar: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Evenemangskalender",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Se alla kommande evenemang, prenumerera på kalendern och anmäl dig direkt.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "subscription_title",
+      type: "text",
+      content: "Prenumerera på kalendern",
+      label: "Prenumerationsrubrik",
+      description: "Rubriken ovanför iCal-prenumerationen.",
+    },
+    {
+      sectionKey: "subscription_description",
+      type: "text",
+      content: "Lägg till alla evenemang i din egen kalender och få automatiska uppdateringar",
+      label: "Prenumerationsbeskrivning",
+      description: "Beskrivningen för kalenderprenumerationen.",
+    },
+    {
+      sectionKey: "download_feed_label",
+      type: "text",
+      content: "Ladda ner iCal-feed",
+      label: "Prenumeration: ladda ner-knapp",
+      description: "Texten på knappen för att ladda ner iCal-flödet.",
+    },
+    {
+      sectionKey: "copy_feed_label",
+      type: "text",
+      content: "Kopiera prenumerationslänk",
+      label: "Prenumeration: kopiera-knapp",
+      description: "Texten på knappen för att kopiera prenumerationslänken.",
+    },
+    {
+      sectionKey: "copy_feed_success",
+      type: "text",
+      content: "Prenumerationslänk kopierad!",
+      label: "Prenumeration: bekräftelse",
+      description: "Toast-texten när prenumerationslänken har kopierats.",
+    },
+    {
+      sectionKey: "loading_text",
+      type: "text",
+      content: "Laddar kalender...",
+      label: "Laddningstext",
+      description: "Texten som visas medan kalendern laddas.",
+    },
+    {
+      sectionKey: "event_add_to_calendar_title",
+      type: "text",
+      content: "Lägg till i kalender",
+      label: "Eventdialog: kalendersektion",
+      description: "Rubriken ovanför knapparna för att lägga till ett event i kalendern.",
+    },
+    {
+      sectionKey: "google_calendar_label",
+      type: "text",
+      content: "Google Calendar",
+      label: "Eventdialog: Google-knapp",
+      description: "Texten på knappen för Google Calendar.",
+    },
+    {
+      sectionKey: "download_ics_label",
+      type: "text",
+      content: "Ladda ner (.ics)",
+      label: "Eventdialog: ICS-knapp",
+      description: "Texten på knappen för att ladda ner en ICS-fil.",
+    },
+  ],
+  gallery: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Bildgalleri",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Bilder från föreningens evenemang och aktiviteter. Filtrera på album eller taggar för att hitta rätt snabbare.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "upload_button_label",
+      type: "text",
+      content: "Ladda upp bild",
+      label: "Uppladdning: öppna-knapp",
+      description: "Texten på knappen som öppnar uppladdningsdialogen.",
+    },
+    {
+      sectionKey: "upload_dialog_title",
+      type: "text",
+      content: "Ladda upp bild",
+      label: "Uppladdning: rubrik",
+      description: "Rubriken i uppladdningsdialogen.",
+    },
+    {
+      sectionKey: "upload_dialog_description",
+      type: "text",
+      content: "Placera bilden i ett album och märk upp den med taggar för årtal, platser och personer.",
+      label: "Uppladdning: beskrivning",
+      description: "Beskrivningen i uppladdningsdialogen.",
+    },
+    {
+      sectionKey: "album_filter_label",
+      type: "text",
+      content: "Album:",
+      label: "Filter: albumetikett",
+      description: "Etiketten framför albumfiltret.",
+    },
+    {
+      sectionKey: "album_filter_all_label",
+      type: "text",
+      content: "Alla album",
+      label: "Filter: alla album",
+      description: "Texten för standardvalet i albumfiltret.",
+    },
+    {
+      sectionKey: "tag_filter_label",
+      type: "text",
+      content: "Tagg:",
+      label: "Filter: taggetikett",
+      description: "Etiketten framför taggfiltret.",
+    },
+    {
+      sectionKey: "tag_filter_all_label",
+      type: "text",
+      content: "Alla taggar",
+      label: "Filter: alla taggar",
+      description: "Texten för standardvalet i taggfiltret.",
+    },
+    {
+      sectionKey: "empty_state_title",
+      type: "text",
+      content: "Inga bilder att visa",
+      label: "Tomläge: rubrik",
+      description: "Texten som visas när filtret inte ger några bilder.",
+    },
+    {
+      sectionKey: "empty_state_cta",
+      type: "text",
+      content: "Ladda upp första bilden",
+      label: "Tomläge: knapptext",
+      description: "Knapptexten när galleriet är tomt för administratörer.",
+    },
+    {
+      sectionKey: "photo_album_prefix",
+      type: "text",
+      content: "Album",
+      label: "Album-prefix",
+      description: "Texten framför albumnamnet på bildkorten.",
+    },
+  ],
+  events: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Kalender och evenemang",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Se våra kommande aktiviteter och anmäl dig direkt här.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "intro_title",
+      type: "text",
+      content: "Kommande evenemang",
+      label: "Inledningsrubrik",
+      description: "Rubriken ovanför eventlistan.",
+    },
+    {
+      sectionKey: "intro_description",
+      type: "text",
+      content: "Se våra kommande aktiviteter och anmäl dig direkt här!",
+      label: "Inledningsbeskrivning",
+      description: "Beskrivningen ovanför eventlistan.",
+    },
+    {
+      sectionKey: "fee_label",
+      type: "text",
+      content: "Avgift",
+      label: "Avgiftsetikett",
+      description: "Etiketten framför eventavgiften.",
+    },
+    {
+      sectionKey: "payment_label",
+      type: "text",
+      content: "Betalning",
+      label: "Betalningsetikett",
+      description: "Etiketten framför betalningsinformationen.",
+    },
+    {
+      sectionKey: "max_participants_prefix",
+      type: "text",
+      content: "Max",
+      label: "Max deltagare: prefix",
+      description: "Prefixet framför max antal deltagare.",
+    },
+    {
+      sectionKey: "max_participants_suffix",
+      type: "text",
+      content: "deltagare",
+      label: "Max deltagare: suffix",
+      description: "Suffixet efter max antal deltagare.",
+    },
+    {
+      sectionKey: "registered_status_label",
+      type: "text",
+      content: "Du är anmäld",
+      label: "Status: anmäld",
+      description: "Texten som visas när användaren är anmäld.",
+    },
+    {
+      sectionKey: "waitlist_status_label",
+      type: "text",
+      content: "Du står på reservlistan",
+      label: "Status: reservlista",
+      description: "Texten som visas när användaren står på reservlistan.",
+    },
+    {
+      sectionKey: "cancel_button_label",
+      type: "text",
+      content: "Avboka",
+      label: "Avboka-knapp",
+      description: "Texten på knappen för att avboka anmälan.",
+    },
+    {
+      sectionKey: "register_button_label",
+      type: "text",
+      content: "Anmäl dig",
+      label: "Anmälan: knapptext",
+      description: "Texten på knappen för att anmäla sig till ett event.",
+    },
+    {
+      sectionKey: "registration_dialog_description",
+      type: "text",
+      content: "Bekräfta din anmälan till evenemanget",
+      label: "Anmälan: dialogbeskrivning",
+      description: "Texten under rubriken i anmälningsdialogen.",
+    },
+    {
+      sectionKey: "registration_notice_title",
+      type: "text",
+      content: "Viktig information före anmälan",
+      label: "Anmälan: informationsrubrik",
+      description: "Rubriken ovanför den viktiga informationen i anmälningsdialogen.",
+    },
+    {
+      sectionKey: "registration_accept_label",
+      type: "text",
+      content: "Jag har läst informationen ovan och förstår att min anmälan registreras i systemet.",
+      label: "Anmälan: bekräftelsetext",
+      description: "Texten bredvid kryssrutan i anmälningsdialogen.",
+    },
+    {
+      sectionKey: "registration_notes_label",
+      type: "text",
+      content: "Meddelande (valfritt)",
+      label: "Anmälan: anteckningsetikett",
+      description: "Etiketten ovanför anteckningsfältet.",
+    },
+    {
+      sectionKey: "registration_notes_placeholder",
+      type: "text",
+      content: "T.ex. allergier, specialkost, etc.",
+      label: "Anmälan: anteckningsplaceholder",
+      description: "Placeholdertexten i anteckningsfältet.",
+    },
+    {
+      sectionKey: "registration_cancel_label",
+      type: "text",
+      content: "Avbryt",
+      label: "Anmälan: avbryt-knapp",
+      description: "Texten på knappen för att stänga anmälningsdialogen.",
+    },
+    {
+      sectionKey: "registration_confirm_label",
+      type: "text",
+      content: "Bekräfta anmälan",
+      label: "Anmälan: bekräfta-knapp",
+      description: "Texten på knappen för att slutföra anmälan.",
+    },
+    {
+      sectionKey: "login_prompt_label",
+      type: "text",
+      content: "Logga in för att anmäla dig",
+      label: "Oinloggad: informationsruta",
+      description: "Texten som visas för oinloggade besökare.",
+    },
+    {
+      sectionKey: "calendar_registered_status_label",
+      type: "text",
+      content: "Du är anmäld till detta event",
+      label: "Kalender: status anmäld",
+      description: "Statusraden i kalenderns eventdialog när användaren är anmäld.",
+    },
+    {
+      sectionKey: "calendar_cancel_registration_label",
+      type: "text",
+      content: "Avboka anmälan",
+      label: "Kalender: avboka-knapp",
+      description: "Texten på knappen för att avboka i kalenderns eventdialog.",
+    },
+    {
+      sectionKey: "calendar_register_button_label",
+      type: "text",
+      content: "Anmäl dig till eventet",
+      label: "Kalender: anmälningsknapp",
+      description: "Texten på knappen för att öppna anmälan i kalenderns eventdialog.",
+    },
+    {
+      sectionKey: "calendar_login_prompt_label",
+      type: "text",
+      content: "Logga in för att anmäla dig till eventet",
+      label: "Kalender: oinloggad text",
+      description: "Texten som visas i kalenderns eventdialog för oinloggade användare.",
+    },
+    {
+      sectionKey: "calendar_registration_dialog_description",
+      type: "text",
+      content: "Bekräfta din anmälan. Uppgifterna sparas i evenemangets deltagarlista i adminpanelen.",
+      label: "Kalender: dialogbeskrivning",
+      description: "Beskrivningen i anmälningsdialogen som öppnas från kalendern.",
+    },
+    {
+      sectionKey: "calendar_registration_accept_label",
+      type: "text",
+      content: "Jag har läst informationen ovan och vill registrera min anmälan till eventet.",
+      label: "Kalender: bekräftelsetext",
+      description: "Texten bredvid kryssrutan i kalenderns anmälningsdialog.",
+    },
+    {
+      sectionKey: "calendar_registration_notes_placeholder",
+      type: "text",
+      content: "T.ex. allergier, specialkost eller annan viktig information",
+      label: "Kalender: anteckningsplaceholder",
+      description: "Placeholdertexten i anteckningsfältet i kalenderns anmälningsdialog.",
+    },
+    {
+      sectionKey: "empty_state_title",
+      type: "text",
+      content: "Inga kommande evenemang",
+      label: "Tomläge: rubrik",
+      description: "Rubriken som visas när det inte finns några event.",
+    },
+    {
+      sectionKey: "empty_state_description",
+      type: "text",
+      content: "Håll utkik här för framtida aktiviteter!",
+      label: "Tomläge: beskrivning",
+      description: "Beskrivningen som visas när det inte finns några event.",
+    },
+  ],
+  folkspel: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Stöd Föreningen Gamla SSK",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Köp lotter och bingolotter. Varje köp stödjer vår förening.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "hero_button_label",
+      type: "text",
+      content: "Öppna Folkspels butik",
+      label: "Hero: knapptext",
+      description: "Texten på huvudknappen högst upp på sidan.",
+    },
+    {
+      sectionKey: "info_title",
+      type: "text",
+      content: "Så fungerar det",
+      label: "Info: rubrik",
+      description: "Rubriken för informationskortet.",
+    },
+    {
+      sectionKey: "info_description",
+      type: "text",
+      content: "Enkelt sätt att stödja föreningen genom att köpa lotter",
+      label: "Info: beskrivning",
+      description: "Beskrivningen under informationsrubriken.",
+    },
+    {
+      sectionKey: "step_1_title",
+      type: "text",
+      content: "Välj lotter",
+      label: "Steg 1: rubrik",
+      description: "Rubriken för första steget.",
+    },
+    {
+      sectionKey: "step_1_description",
+      type: "text",
+      content: "Bläddra bland BingoLotto, Sverigelotten, JOYNA och fler",
+      label: "Steg 1: beskrivning",
+      description: "Beskrivningen för första steget.",
+    },
+    {
+      sectionKey: "step_2_title",
+      type: "text",
+      content: "Köp säkert",
+      label: "Steg 2: rubrik",
+      description: "Rubriken för andra steget.",
+    },
+    {
+      sectionKey: "step_2_description",
+      type: "text",
+      content: "Betala tryggt via Folkspels säkra betalningslösning",
+      label: "Steg 2: beskrivning",
+      description: "Beskrivningen för andra steget.",
+    },
+    {
+      sectionKey: "step_3_title",
+      type: "text",
+      content: "Stöd föreningen",
+      label: "Steg 3: rubrik",
+      description: "Rubriken för tredje steget.",
+    },
+    {
+      sectionKey: "step_3_description",
+      type: "text",
+      content: "En del av intäkterna går direkt till Föreningen Gamla SSK",
+      label: "Steg 3: beskrivning",
+      description: "Beskrivningen för tredje steget.",
+    },
+    {
+      sectionKey: "notice_html",
+      type: "html",
+      content: "<p><strong>OBS!</strong> När du klickar på knappen ovan öppnas Folkspels butik i ett nytt fönster. Alla köp hanteras säkert av Folkspel, och föreningen får automatiskt provision.</p>",
+      label: "Info: OBS-ruta",
+      description: "Texten i den gula informationsrutan.",
+    },
+    {
+      sectionKey: "preview_title",
+      type: "text",
+      content: "Förhandsvisning av butiken",
+      label: "Förhandsvisning: rubrik",
+      description: "Rubriken för butikens förhandsvisning.",
+    },
+    {
+      sectionKey: "preview_description",
+      type: "text",
+      content: "Se vilka produkter som finns tillgängliga (klicka på knappen ovan för att köpa)",
+      label: "Förhandsvisning: beskrivning",
+      description: "Beskrivningen för butikens förhandsvisning.",
+    },
+    {
+      sectionKey: "preview_button_label",
+      type: "text",
+      content: "Öppna butiken för att köpa",
+      label: "Förhandsvisning: knapptext",
+      description: "Texten på knappen under förhandsvisningen.",
+    },
+    {
+      sectionKey: "contact_html",
+      type: "html",
+      content: "<p>Har du frågor om lotteriet? Kontakta oss på <a href=\"mailto:info@gamlassk.se\">info@gamlassk.se</a></p>",
+      label: "Kontakttext",
+      description: "Texten längst ned på sidan.",
+    },
+  ],
+  login: [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Logga in",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Använd din e-postadress och ditt lösenord för att komma vidare.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "card_description",
+      type: "text",
+      content: "Logga in för att fortsätta.",
+      label: "Kortbeskrivning",
+      description: "Texten under appnamnet på inloggningssidan.",
+    },
+    {
+      sectionKey: "loading_text",
+      type: "text",
+      content: "Laddar...",
+      label: "Laddningstext",
+      description: "Texten som visas medan inloggningsstatus kontrolleras.",
+    },
+    {
+      sectionKey: "back_link_label",
+      type: "text",
+      content: "Tillbaka till startsidan",
+      label: "Tillbaka-länk",
+      description: "Texten på länken tillbaka till startsidan.",
+    },
+  ],
+  "reset-password": [
+    {
+      sectionKey: "hero_title",
+      type: "text",
+      content: "Återställ lösenord",
+      label: "Hero-rubrik",
+      description: "Sidans huvudrubrik överst.",
+    },
+    {
+      sectionKey: "hero_description",
+      type: "text",
+      content: "Välj ett nytt lösenord och slutför återställningen på ett tryggt sätt.",
+      label: "Hero-beskrivning",
+      description: "Ingressen under huvudrubriken.",
+    },
+    {
+      sectionKey: "form_description",
+      type: "text",
+      content: "Ange ditt nya lösenord för att slutföra återställningen.",
+      label: "Formulärbeskrivning",
+      description: "Texten ovanför formuläret när återställning pågår.",
+    },
+    {
+      sectionKey: "complete_description",
+      type: "text",
+      content: "Ditt lösenord har uppdaterats.",
+      label: "Klartext",
+      description: "Texten som visas när återställningen är klar.",
+    },
+    {
+      sectionKey: "success_helper_text",
+      type: "text",
+      content: "Du kan nu logga in med ditt nya lösenord.",
+      label: "Klarläge: hjälprad",
+      description: "Texten under bekräftelsen när återställningen är klar.",
+    },
+    {
+      sectionKey: "login_button_label",
+      type: "text",
+      content: "Till inloggningen",
+      label: "Klarläge: knapptext",
+      description: "Texten på knappen tillbaka till inloggningen.",
+    },
+    {
+      sectionKey: "new_password_label",
+      type: "text",
+      content: "Nytt lösenord",
+      label: "Fält: nytt lösenord",
+      description: "Etiketten för första lösenordsfältet.",
+    },
+    {
+      sectionKey: "confirm_password_label",
+      type: "text",
+      content: "Bekräfta lösenord",
+      label: "Fält: bekräfta lösenord",
+      description: "Etiketten för andra lösenordsfältet.",
+    },
+    {
+      sectionKey: "saving_label",
+      type: "text",
+      content: "Sparar...",
+      label: "Knapp: sparar",
+      description: "Texten som visas medan lösenordet sparas.",
+    },
+    {
+      sectionKey: "submit_button_label",
+      type: "text",
+      content: "Spara nytt lösenord",
+      label: "Knapp: spara lösenord",
+      description: "Texten på knappen för att spara ett nytt lösenord.",
+    },
+    {
+      sectionKey: "invalid_token_text",
+      type: "text",
+      content: "Den här länken är ogiltig. Begär en ny återställningslänk från inloggningssidan.",
+      label: "Ogiltig länk",
+      description: "Texten som visas när återställningslänken saknar eller har ogiltig token.",
+    },
+    {
+      sectionKey: "back_link_label",
+      type: "text",
+      content: "Tillbaka till inloggningen",
+      label: "Tillbaka-länk",
+      description: "Texten på länken tillbaka till inloggningen.",
+    },
+  ],
+};
+
 function SortableItem({ section, onEdit, onDelete, onTogglePublish }: {
   section: ContentSection;
   onEdit: (section: ContentSection) => void;
@@ -157,6 +1127,11 @@ export default function PageEditor({ page }: PageEditorProps) {
     }
   }, [contentData]);
 
+  const recommendedSections = PAGE_SECTION_TEMPLATES[page] || [];
+  const missingRecommendedSections = recommendedSections.filter(
+    (template) => !sections.some((section) => section.sectionKey === template.sectionKey),
+  );
+
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -213,6 +1188,16 @@ export default function PageEditor({ page }: PageEditorProps) {
       sectionKey: formData.sectionKey,
       type: formData.type,
       content: formData.content,
+      order: sections.length,
+    });
+  };
+
+  const handleCreateRecommended = (template: (typeof recommendedSections)[number]) => {
+    createContentMutation.mutate({
+      page,
+      sectionKey: template.sectionKey,
+      type: template.type,
+      content: template.content,
       order: sections.length,
     });
   };
@@ -297,6 +1282,37 @@ export default function PageEditor({ page }: PageEditorProps) {
           </DialogContent>
         </Dialog>
       </div>
+
+      {missingRecommendedSections.length > 0 ? (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-lg">Föreslagna sektioner</CardTitle>
+            <p className="text-sm text-gray-600">
+              De här CMS-fälten används redan av sidan men finns inte skapade ännu.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {missingRecommendedSections.map((template) => (
+              <div
+                key={template.sectionKey}
+                className="flex flex-col gap-3 rounded-lg border border-blue-100 bg-white p-4 md:flex-row md:items-center md:justify-between"
+              >
+                <div>
+                  <p className="font-semibold">{template.label}</p>
+                  <p className="text-sm text-gray-600">{template.description}</p>
+                  <p className="mt-1 text-xs text-gray-500">Nyckel: {template.sectionKey}</p>
+                </div>
+                <Button
+                  onClick={() => handleCreateRecommended(template)}
+                  disabled={createContentMutation.isPending}
+                >
+                  Lägg till
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {sections.length > 0 ? (
         <DndContext

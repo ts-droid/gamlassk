@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Search, Mail, Phone, User } from "lucide-react";
 import { Redirect } from "wouter";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
 
 export default function MemberDirectory() {
   const { user, loading: authLoading } = useAuth();
@@ -48,14 +49,11 @@ export default function MemberDirectory() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold text-gray-900">Medlemskatalog</h1>
-          <p className="text-gray-600 mt-2">
-            Kontaktuppgifter till våra medlemmar
-          </p>
-        </div>
-      </header>
+      <SiteHeader currentPath="/members" />
+      <PageHero
+        title="Medlemskatalog"
+        description="Sök efter medlemmar och hitta kontaktuppgifter på ett och samma ställe."
+      />
 
       <main className="container mx-auto px-4 py-8">
         {/* Search */}
@@ -167,6 +165,7 @@ export default function MemberDirectory() {
           </Card>
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

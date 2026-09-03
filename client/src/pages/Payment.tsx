@@ -10,9 +10,10 @@ import { Badge } from "@/components/ui/badge";
 import { Smartphone, Upload, CheckCircle, Clock, XCircle, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { getLoginUrl } from "@/const";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
 
 export default function Payment() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -95,20 +96,28 @@ export default function Payment() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
-        <Card className="max-w-md w-full">
-          <CardHeader>
-            <CardTitle>Logga in krävs</CardTitle>
-            <CardDescription>
-              Du måste vara inloggad för att betala medlemsavgift
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild className="w-full">
-              <a href={getLoginUrl()}>Logga in</a>
-            </Button>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+        <SiteHeader currentPath="/payment" />
+        <PageHero
+          title="Betala medlemsavgift"
+          description="Logga in för att kunna registrera betalning och följa status på din medlemsavgift."
+        />
+        <main className="flex items-center justify-center p-4 py-12">
+          <Card className="max-w-md w-full">
+            <CardHeader>
+              <CardTitle>Logga in krävs</CardTitle>
+              <CardDescription>
+                Du måste vara inloggad för att betala medlemsavgift
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="w-full">
+                <a href={getLoginUrl()}>Logga in</a>
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+        <SiteFooter />
       </div>
     );
   }
@@ -117,18 +126,11 @@ export default function Payment() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-900 to-blue-700 text-white py-16">
-        <div className="container">
-          <div className="flex items-center gap-3 mb-4">
-            <Smartphone className="h-10 w-10" />
-            <h1 className="text-4xl font-bold">Betala medlemsavgift</h1>
-          </div>
-          <p className="text-xl text-blue-100">
-            Betala enkelt med Swish och ladda upp kvitto för verifiering
-          </p>
-        </div>
-      </div>
+      <SiteHeader currentPath="/payment" />
+      <PageHero
+        title="Betala medlemsavgift"
+        description="Betala enkelt med Swish och ladda upp kvitto för verifiering."
+      />
 
       <div className="container py-12">
         <div className="grid md:grid-cols-2 gap-8 max-w-6xl mx-auto">
@@ -334,6 +336,7 @@ export default function Payment() {
           </div>
         </div>
       </div>
+      <SiteFooter />
     </div>
   );
 }

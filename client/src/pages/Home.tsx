@@ -1,70 +1,94 @@
 import { trpc } from "@/lib/trpc";
-import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
-import { Calendar, Users, Trophy, Mail, Phone, FileText, CreditCard } from "lucide-react";
-import { useCMSContent, useSiteSettings, useBoardMembers } from "@/hooks/useCMSContent";
-import { UnifiedLoginDialog } from "@/components/UnifiedLoginDialog";
+import { Calendar, Users, Trophy, Mail, Phone } from "lucide-react";
+import { useCMSContent, useBoardMembers } from "@/hooks/useCMSContent";
 import { BankIDErrorAlert } from "@/components/BankIDErrorAlert";
+import { FolkspelSection } from "@/components/FolkspelSection";
+import { SiteFooter, SiteHeader } from "@/components/SiteChrome";
 
 // Upcoming Events Component
 function UpcomingEventsSection() {
   const { data: allEvents, isLoading } = trpc.events.list.useQuery();
   const upcomingEvents = allEvents?.slice(0, 3) || [];
 
+  const formatEventDate = (eventDate: Date | string, eventTime?: string | null) => {
+    const date = new Date(eventDate);
+
+    if (Number.isNaN(date.getTime())) {
+      return "Datum ej angivet";
+    }
+
+    if (eventTime) {
+      const [hours, minutes] = eventTime.split(":").map(Number);
+      if (!Number.isNaN(hours) && !Number.isNaN(minutes)) {
+        date.setHours(hours, minutes, 0, 0);
+      }
+    }
+
+    return date.toLocaleDateString("sv-SE", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      ...(eventTime
+        ? {
+            hour: "2-digit" as const,
+            minute: "2-digit" as const,
+          }
+        : {}),
+    });
+  };
+
   if (isLoading || !upcomingEvents || upcomingEvents.length === 0) {
     return null;
   }
 
   return (
-    <section className="py-16 bg-white">
+    <section className="bg-white py-14 sm:py-16">
       <div className="container mx-auto px-4">
-        <div className="flex justify-between items-center mb-8">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-3xl font-bold text-[oklch(0.25_0.08_250)]">
             Kommande evenemang
           </h2>
           <Link href="/calendar">
-            <Button variant="outline">
+            <Button variant="outline" className="w-full sm:w-auto">
               Se alla evenemang
             </Button>
           </Link>
         </div>
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {upcomingEvents.map((event) => (
-            <Card key={event.id} className="hover:shadow-lg transition-shadow">
+            <Card key={event.id} className="flex h-full flex-col hover:shadow-lg transition-shadow">
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div>
                     <CardTitle className="text-xl mb-2">{event.title}</CardTitle>
                     <CardDescription className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
-                      {event.eventTime ? new Date(event.eventTime).toLocaleDateString('sv-SE', {
-                        weekday: 'long',
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      }) : 'Datum ej angivet'}
+                      {formatEventDate(event.eventDate, event.eventTime)}
                     </CardDescription>
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-600 line-clamp-3 mb-4">
-                  {event.description}
-                </p>
-                {event.location && (
-                  <p className="text-sm text-gray-500 mb-4">
-                    📍 {event.location}
+              <CardContent className="flex flex-1 flex-col">
+                <div className="flex-1">
+                  <p className="mb-4 line-clamp-3 text-sm text-gray-600">
+                    {event.description}
                   </p>
-                )}
+                  {event.location && (
+                    <p className="mb-4 text-sm text-gray-500">
+                      📍 {event.location}
+                    </p>
+                  )}
+                </div>
                 <Link href="/calendar">
                   <Button className="w-full" size="sm">
                     Läs mer & anmäl dig
@@ -80,13 +104,9 @@ function UpcomingEventsSection() {
 }
 
 export default function Home() {
-  const { user } = useAuth();
   const { data: latestNews } = trpc.news.latest.useQuery();
-  const { getContent, isLoading: contentLoading } = useCMSContent("home");
-  const { getSetting, isLoading: settingsLoading } = useSiteSettings();
+  const { getContent } = useCMSContent("home");
   const { members, isLoading: membersLoading } = useBoardMembers();
-  
-  const [loginDialogOpen, setLoginDialogOpen] = useState(false);
   
   const [membershipForm, setMembershipForm] = useState({
     name: "",
@@ -94,6 +114,7 @@ export default function Home() {
     phone: "",
     message: "",
   });
+  const [selectedNews, setSelectedNews] = useState<any | null>(null);
 
   const utils = trpc.useUtils();
   const submitMembership = trpc.membership.submit.useMutation({
@@ -113,76 +134,24 @@ export default function Home() {
 
   return (
     <div className="min-h-screen">
-      {/* Header */}
-      <header className="bg-[oklch(0.25_0.08_250)] text-white">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img 
-                src={getSetting("site_logo", "/logo.png")} 
-                alt="Gamla SSK Logo" 
-                className="h-20 w-20 md:h-24 md:w-24" 
-              />
-              <div>
-                <h1 className="text-2xl md:text-3xl font-bold">{getSetting("site_name", "Föreningen Gamla SSK-are")}</h1>
-                <p className="text-sm opacity-90">Sveriges äldsta stödförening - Sedan 1937</p>
-              </div>
-            </div>
-            <nav className="flex gap-2 md:gap-4">
-              {user ? (
-                <>
-                  <Link href="/documents">
-                    <Button variant="ghost" className="text-white hover:bg-white/10 hidden md:flex">
-                      <FileText className="h-4 w-4 mr-2" />
-                      Dokument
-                    </Button>
-                  </Link>
-                  <Link href="/members">
-                    <Button variant="ghost" className="text-white hover:bg-white/10 hidden md:flex">
-                      <Users className="h-4 w-4 mr-2" />
-                      Medlemmar
-                    </Button>
-                  </Link>
-                  <Link href="/payment">
-                    <Button className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold">
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Betala medlemsavgift</span>
-                      <span className="sm:hidden">Betala</span>
-                    </Button>
-                  </Link>
-                  <Link href="/profile">
-                    <Button variant="secondary">Min sida</Button>
-                  </Link>
-                </>
-              ) : (
-                <Button 
-                  variant="secondary"
-                  onClick={() => setLoginDialogOpen(true)}
-                >
-                  Logga in
-                </Button>
-              )}
-            </nav>
-          </div>
-        </div>
-      </header>
+      <SiteHeader currentPath="/" />
 
       <BankIDErrorAlert />
 
       {/* Hero Section */}
-      <section className="bg-gradient-to-b from-[#001f3f] via-[#003d73] to-[#0066a6] py-32 md:py-40">
+      <section className="bg-gradient-to-b from-[#001f3f] via-[#003d73] to-[#0066a6] py-20 sm:py-28 md:py-40">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 animate-fade-in-up">
+          <h2 className="mb-6 text-4xl font-bold text-white animate-fade-in-up sm:text-5xl md:text-6xl">
             {getContent("hero_title", "Välkommen till Föreningen Gamla SSK-are")}
           </h2>
-          <p className="text-xl text-white/90 max-w-3xl mx-auto mb-8 animate-fade-in-up animation-delay-200">
+          <p className="mx-auto mb-8 max-w-3xl text-lg text-white/90 animate-fade-in-up animation-delay-200 sm:text-xl">
             {getContent("hero_subtitle", "En förening för alla som varit med och byggt Södertälje SK genom åren")}
           </p>
-          <div className="flex gap-4 justify-center animate-fade-in-up animation-delay-400">
-            <Button size="lg" className="bg-[oklch(0.85_0.12_90)] text-[oklch(0.25_0.08_250)] hover:bg-[oklch(0.80_0.12_90)]">
+          <div className="flex flex-col justify-center gap-4 animate-fade-in-up animation-delay-400 sm:flex-row">
+            <Button size="lg" className="w-full sm:w-auto">
               <a href="#bli-medlem">Bli medlem</a>
             </Button>
-            <Button size="lg" variant="outline" className="text-white border-white hover:bg-white/10">
+            <Button size="lg" variant="outline" className="w-full border-white/60 sm:w-auto">
               <a href="#om-oss">Läs mer</a>
             </Button>
           </div>
@@ -190,9 +159,9 @@ export default function Home() {
       </section>
 
       {/* About Section */}
-      <section id="om-oss" className="py-16 bg-white">
+      <section id="om-oss" className="bg-white py-16">
         <div className="container mx-auto px-4">
-          <div className="grid md:grid-cols-2 gap-12 items-center">
+          <div className="grid items-center gap-10 md:grid-cols-2 md:gap-12">
             <div>
               <h2 className="text-3xl font-bold text-[oklch(0.25_0.08_250)] mb-6">
                 {getContent("about_title", "Om Föreningen Gamla SSK-are")}
@@ -204,7 +173,7 @@ export default function Home() {
                 }}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Card>
                 <CardHeader>
                   <Calendar className="h-8 w-8 text-[oklch(0.85_0.12_90)] mb-2" />
@@ -246,11 +215,23 @@ export default function Home() {
         <section className="py-16 bg-gray-50">
           <div className="container mx-auto px-4">
             <h2 className="text-3xl font-bold text-[oklch(0.25_0.08_250)] mb-8 text-center">
-              Senaste nyheterna
+              {getContent("news_section_title", "Senaste nyheterna")}
             </h2>
-            <div className="grid md:grid-cols-3 gap-6">
+            <p className="mx-auto mb-8 max-w-3xl text-center text-gray-600">
+              {getContent(
+                "news_section_description",
+                "Här hittar du de senaste uppdateringarna, nyheterna och händelserna från föreningen.",
+              )}
+            </p>
+            <div className="grid gap-6 md:grid-cols-3">
               {latestNews.map((news) => (
-                <Card key={news.id}>
+                <button
+                  key={news.id}
+                  type="button"
+                  className="text-left"
+                  onClick={() => setSelectedNews(news)}
+                >
+                <Card className="h-full cursor-pointer transition-shadow hover:shadow-lg">
                   {news.imageUrl && (
                     <img 
                       src={news.imageUrl} 
@@ -271,29 +252,48 @@ export default function Home() {
                     />
                   </CardContent>
                 </Card>
+                </button>
               ))}
             </div>
           </div>
         </section>
       )}
 
-      {/* Bingo Banner */}
-      <section className="py-12 bg-[oklch(0.85_0.12_90)]">
-        <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold text-[oklch(0.25_0.08_250)] mb-4">
-            Stöd SSK genom folkspels-bingolotter!
-          </h2>
-          <p className="text-lg text-gray-700 mb-6">
-            Köp bingolotter och lotter online - en del av intäkterna går direkt till föreningen.
-            Du kan också köpa lotter på ICA Maxi Vasa, Moraberg eller Stora Coop Vasa.
-          </p>
-          <Link href="/folkspel">
-            <Button size="lg" className="bg-[oklch(0.25_0.08_250)] text-white hover:bg-[oklch(0.20_0.08_250)]">
-              Köp lotter online
-            </Button>
-          </Link>
-        </div>
-      </section>
+      <Dialog open={Boolean(selectedNews)} onOpenChange={(open) => !open && setSelectedNews(null)}>
+        <DialogContent className="max-w-3xl">
+          {selectedNews ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="text-2xl">{selectedNews.title}</DialogTitle>
+                <DialogDescription>
+                  {selectedNews.publishedAt
+                    ? new Date(selectedNews.publishedAt).toLocaleDateString("sv-SE", {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      })
+                    : "Ej publicerad"}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6">
+                {selectedNews.imageUrl ? (
+                  <img
+                    src={selectedNews.imageUrl}
+                    alt={selectedNews.title}
+                    className="max-h-[320px] w-full rounded-md object-cover"
+                  />
+                ) : null}
+                <div
+                  className="prose prose-sm max-w-none text-gray-700 sm:prose-base"
+                  dangerouslySetInnerHTML={{ __html: selectedNews.content }}
+                />
+              </div>
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <FolkspelSection />
 
       {/* Membership Form */}
       <section id="bli-medlem" className="py-16 bg-white">
@@ -346,7 +346,7 @@ export default function Home() {
                 </div>
                 <Button 
                   type="submit" 
-                  className="w-full bg-[oklch(0.85_0.12_90)] text-[oklch(0.25_0.08_250)] hover:bg-[oklch(0.80_0.12_90)]"
+                  className="w-full"
                   disabled={submitMembership.isPending}
                 >
                   {submitMembership.isPending ? "Skickar..." : "Skicka ansökan"}
@@ -363,7 +363,7 @@ export default function Home() {
           <h2 className="text-3xl font-bold text-[oklch(0.25_0.08_250)] mb-8 text-center">
             {getContent("contact_title", "Kontakta styrelsen")}
           </h2>
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-3">
             {membersLoading ? (
               <p className="text-center col-span-3">Laddar styrelsemedlemmar...</p>
             ) : members.length > 0 ? (
@@ -442,32 +442,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="bg-[oklch(0.25_0.08_250)] text-white py-8">
-        <div className="container mx-auto px-4 text-center">
-          <p className="mb-4">© 2024 Föreningen Gamla SSK-are. Alla rättigheter förbehållna.</p>
-          <div className="flex gap-4 justify-center">
-            <Link href="/" className="hover:text-[oklch(0.85_0.12_90)]">
-              Startsida
-            </Link>
-            <Link href="/statutes" className="hover:text-[oklch(0.85_0.12_90)]">
-              Stadgar
-            </Link>
-            <Link href="/gallery" className="hover:text-[oklch(0.85_0.12_90)]">
-              Bildgalleri
-            </Link>
-            <Link href="/events" className="hover:text-[oklch(0.85_0.12_90)]">
-              Evenemang
-            </Link>
-            <a href="#" className="hover:text-[oklch(0.85_0.12_90)]">Kontakt</a>
-          </div>
-        </div>
-      </footer>
-      
-      {/* Unified Login Dialog */}
-      <UnifiedLoginDialog 
-        open={loginDialogOpen} 
-        onOpenChange={setLoginDialogOpen} 
-      />
+      <SiteFooter />
     </div>
   );
 }

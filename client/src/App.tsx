@@ -15,12 +15,16 @@ import Documents from "./pages/Documents";
 import Calendar from "./pages/Calendar";
 import Payment from "./pages/Payment";
 import Folkspel from "./pages/Folkspel";
+import Login from "./pages/Login";
+import ResetPassword from "./pages/ResetPassword";
 
 function Router() {
   // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
       <Route path={"/"} component={Home} />
+      <Route path={"/login"} component={Login} />
+      <Route path={"/reset-password"} component={ResetPassword} />
       <Route path={"/admin"} component={Admin} />
       <Route path={"/profile"} component={Profile} />
       <Route path={"/statutes"} component={Statutes} />

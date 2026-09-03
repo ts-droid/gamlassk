@@ -39,17 +39,14 @@ Used when those features are enabled:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_CALLBACK_URL`
+- `OWNER_EMAIL`
 - `RESEND_API_KEY`
 - `EMAIL_FROM`
 - `VITE_APP_LOGO`
 - `VITE_ANALYTICS_ENDPOINT`
 - `VITE_ANALYTICS_WEBSITE_ID`
-- `VITE_OAUTH_PORTAL_URL`
-- `VITE_APP_ID`
 - `VITE_FRONTEND_FORGE_API_URL`
 - `VITE_FRONTEND_FORGE_API_KEY`
-- `OAUTH_SERVER_URL`
-- `OWNER_OPEN_ID`
 - `BUILT_IN_FORGE_API_URL`
 - `BUILT_IN_FORGE_API_KEY`
 
@@ -65,6 +62,8 @@ Recommended deployment path:
 6. Set package manager to `npm`.
 7. Set entry file to `index.js`.
 8. Import environment variables from `.env.example` values, but with real secrets.
+
+If Hostinger does not allow changing the root directory, the repository root also works. In that setup, `index.js` in the root starts the generated runtime from `hostinger-deploy/`.
 
 If analytics is not used, leave the analytics variables empty and remove or adapt the script reference in `client/index.html` later if you want a warning-free build.
 

@@ -2,8 +2,197 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, documents, InsertDocument } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import mysql from "mysql2/promise";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+
+function normalizePermissions(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+const USER_SCHEMA_PATCHES = [
+  ["password", "ADD COLUMN `password` varchar(255)"],
+  ["roleId", "ADD COLUMN `roleId` int"],
+  ["personnummer", "ADD COLUMN `personnummer` varchar(13)"],
+  ["streetAddress", "ADD COLUMN `streetAddress` text"],
+  ["postalCode", "ADD COLUMN `postalCode` varchar(10)"],
+  ["city", "ADD COLUMN `city` varchar(100)"],
+  ["joinYear", "ADD COLUMN `joinYear` int"],
+  ["memberType", "ADD COLUMN `memberType` enum('ordinarie','hedersmedlem','stodmedlem') DEFAULT 'ordinarie'"],
+  ["paymentStatus", "ADD COLUMN `paymentStatus` enum('paid','unpaid','exempt') DEFAULT 'unpaid'"],
+  ["paymentYear", "ADD COLUMN `paymentYear` int"],
+  ["showInDirectory", "ADD COLUMN `showInDirectory` int NOT NULL DEFAULT 1"],
+] as const;
+
+const GALLERY_SCHEMA_PATCHES = [
+  ["tags", "ADD COLUMN `tags` json"],
+] as const;
+
+const EVENT_SCHEMA_PATCHES = [
+  ["feeAmount", "ADD COLUMN `feeAmount` varchar(20)"],
+  ["paymentInstructions", "ADD COLUMN `paymentInstructions` text"],
+  ["registrationNotice", "ADD COLUMN `registrationNotice` text"],
+] as const;
+
+const SYSTEM_ROLE_SEEDS = [
+  {
+    name: "huvudadmin",
+    description: "Huvudadministratör med full åtkomst",
+    permissions: JSON.stringify([
+      "manage_all",
+      "manage_roles",
+      "manage_users",
+      "manage_news",
+      "manage_members",
+      "view_members",
+      "manage_events",
+      "manage_gallery",
+      "manage_cms",
+    ]),
+    isCustom: 0,
+  },
+  {
+    name: "nyhetsadmin",
+    description: "Administratör för nyheter, evenemang och galleri",
+    permissions: JSON.stringify([
+      "manage_news",
+      "manage_events",
+      "manage_gallery",
+    ]),
+    isCustom: 0,
+  },
+  {
+    name: "medlemsadmin",
+    description: "Administratör för medlemshantering",
+    permissions: JSON.stringify([
+      "manage_members",
+      "view_members",
+    ]),
+    isCustom: 0,
+  },
+] as const;
+
+function parseDatabaseUrl(databaseUrl: string) {
+  const parsed = new URL(databaseUrl);
+  return {
+    host: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : 3306,
+    user: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace(/^\//, ""),
+  };
+}
+
+export async function ensureSchemaCompatibility() {
+  if (!ENV.databaseUrl) {
+    console.warn("[Database] Skipping schema compatibility check: DATABASE_URL missing");
+    return;
+  }
+
+  let connection: mysql.Connection | null = null;
+
+  try {
+    connection = await mysql.createConnection(parseDatabaseUrl(ENV.databaseUrl));
+
+    const [userColumnsRows] = await connection.query("SHOW COLUMNS FROM `users`");
+    const existingUserColumns = new Set(
+      Array.isArray(userColumnsRows)
+        ? userColumnsRows.map((row: any) => String(row.Field))
+        : []
+    );
+
+    for (const [columnName, statement] of USER_SCHEMA_PATCHES) {
+      if (existingUserColumns.has(columnName)) {
+        continue;
+      }
+
+      console.log(`[Database] Adding missing users column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`users\` ${statement}`);
+    }
+
+    const [galleryColumnsRows] = await connection.query("SHOW COLUMNS FROM `gallery_photos`");
+    const existingGalleryColumns = new Set(
+      Array.isArray(galleryColumnsRows)
+        ? galleryColumnsRows.map((row: any) => String(row.Field))
+        : []
+    );
+
+    for (const [columnName, statement] of GALLERY_SCHEMA_PATCHES) {
+      if (existingGalleryColumns.has(columnName)) {
+        continue;
+      }
+
+      console.log(`[Database] Adding missing gallery_photos column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`gallery_photos\` ${statement}`);
+    }
+
+    const [eventColumnsRows] = await connection.query("SHOW COLUMNS FROM `events`");
+    const existingEventColumns = new Set(
+      Array.isArray(eventColumnsRows)
+        ? eventColumnsRows.map((row: any) => String(row.Field))
+        : []
+    );
+
+    for (const [columnName, statement] of EVENT_SCHEMA_PATCHES) {
+      if (existingEventColumns.has(columnName)) {
+        continue;
+      }
+
+      console.log(`[Database] Adding missing events column: ${columnName}`);
+      await connection.query(`ALTER TABLE \`events\` ${statement}`);
+    }
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS \`password_reset_tokens\` (
+        \`id\` int AUTO_INCREMENT NOT NULL,
+        \`userId\` int NOT NULL,
+        \`token\` varchar(255) NOT NULL,
+        \`expiresAt\` timestamp NOT NULL,
+        \`used\` int NOT NULL DEFAULT 0,
+        \`createdAt\` timestamp NOT NULL DEFAULT (now()),
+        PRIMARY KEY (\`id\`)
+      )
+    `);
+
+    for (const roleSeed of SYSTEM_ROLE_SEEDS) {
+      await connection.query(
+        `
+          INSERT INTO \`roles\` (\`name\`, \`description\`, \`permissions\`, \`isCustom\`)
+          VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            \`description\` = VALUES(\`description\`),
+            \`permissions\` = VALUES(\`permissions\`),
+            \`isCustom\` = VALUES(\`isCustom\`)
+        `,
+        [roleSeed.name, roleSeed.description, roleSeed.permissions, roleSeed.isCustom]
+      );
+    }
+
+    console.log("[Database] Schema compatibility check complete");
+  } catch (error) {
+    console.error("[Database] Schema compatibility check failed:", error);
+  } finally {
+    await connection?.end();
+  }
+}
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
@@ -55,7 +244,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     if (user.role !== undefined) {
       values.role = user.role;
       updateSet.role = user.role;
-    } else if (user.openId === ENV.ownerOpenId) {
+    } else if (
+      user.email &&
+      ENV.ownerEmail &&
+      String(user.email).trim().toLowerCase() === ENV.ownerEmail
+    ) {
       values.role = 'admin';
       updateSet.role = 'admin';
     }
@@ -123,14 +316,15 @@ export async function userHasPermission(userId: number, permission: string): Pro
     }
 
     const role = userResult[0].role;
+    const permissions = normalizePermissions(role.permissions);
     
     // Check if role has manage_all permission (huvudadmin)
-    if (role.permissions.includes('manage_all')) {
+    if (permissions.includes('manage_all')) {
       return true;
     }
     
     // Check if role has the specific permission
-    return role.permissions.includes(permission);
+    return permissions.includes(permission);
   } catch (error) {
     console.error("[Database] Failed to check permission:", error);
     return false;

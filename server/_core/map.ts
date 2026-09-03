@@ -1,9 +1,9 @@
 /**
- * Google Maps API Integration for Manus WebDev Templates
- * 
+ * Google Maps API integration via the configured proxy service.
+ *
  * Main function: makeRequest<T>(endpoint, params) - Makes authenticated requests to Google Maps APIs
  * All credentials are automatically injected. Array parameters use | as separator.
- * 
+ *
  * See API examples below the type definitions for usage patterns.
  */
 
@@ -313,7 +313,6 @@ export type RoadsResult = {
  * Output: Image URL (not JSON) - use directly in <img src={url} />
  * Note: Construct URL manually with getMapsConfig() for auth
  */
-
 
 
 

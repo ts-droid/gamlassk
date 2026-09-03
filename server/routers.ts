@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, protectedProcedure, publicProcedure, router, manageNewsProcedure, manageMembersProcedure, manageRolesProcedure, manageUsersProcedure, manageCMSProcedure } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router, manageNewsProcedure, manageMembersProcedure, manageRolesProcedure, manageUsersProcedure, manageCMSProcedure, manageEventsProcedure, manageGalleryProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { getDb, getEventWithRegistrations, getUserEventRegistration, getUserRegisteredEvents } from "./db";
 import { users, news, membershipApplications, roles, galleryPhotos, events, pageContent, siteSettings, boardMembers, contentHistory, documents, paymentConfirmations } from "../drizzle/schema";
@@ -9,6 +9,50 @@ import { z } from "zod";
 import { and, desc, eq, isNotNull, gte, sql } from "drizzle-orm";
 import { storagePut } from "./storage";
 import crypto from "crypto";
+
+function normalizePermissions(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
+
+function normalizeTags(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
 
 
 export const appRouter = router({
@@ -28,7 +72,6 @@ export const appRouter = router({
       return {
         google: isGoogleAuthEnabled(),
         password: true, // Password-based login for registered members
-        manus: true,
       };
     }),
     
@@ -353,7 +396,11 @@ export const appRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
       }
       
-      return await db.select().from(roles);
+      const allRoles = await db.select().from(roles);
+      return allRoles.map((role) => ({
+        ...role,
+        permissions: normalizePermissions(role.permissions),
+      }));
     }),
     
     // Create new role (huvudadmin only)
@@ -490,8 +537,16 @@ export const appRouter = router({
         if (!userRole[0] || userRole[0].name !== 'huvudadmin') {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Only huvudadmin can assign roles' });
         }
-        
-        await db.update(users).set({ roleId: input.roleId }).where(eq(users.id, input.userId));
+
+        const targetRole = await db.select().from(roles).where(eq(roles.id, input.roleId)).limit(1);
+        if (!targetRole[0]) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Role not found' });
+        }
+
+        await db.update(users).set({
+          roleId: input.roleId,
+          role: 'admin',
+        }).where(eq(users.id, input.userId));
         
         return { success: true };
       }),
@@ -501,7 +556,11 @@ export const appRouter = router({
     list: publicProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-      return await db.select().from(galleryPhotos).orderBy(desc(galleryPhotos.createdAt));
+      const photos = await db.select().from(galleryPhotos).orderBy(desc(galleryPhotos.createdAt));
+      return photos.map((photo) => ({
+        ...photo,
+        tags: normalizeTags(photo.tags),
+      }));
     }),
     
     // Get photos by category (public)
@@ -510,27 +569,27 @@ export const appRouter = router({
       .query(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        return await db.select().from(galleryPhotos)
+        const photos = await db.select().from(galleryPhotos)
           .where(eq(galleryPhotos.category, input.category))
           .orderBy(desc(galleryPhotos.createdAt));
+        return photos.map((photo) => ({
+          ...photo,
+          tags: normalizeTags(photo.tags),
+        }));
       }),
     
-    // Upload photo with automatic compression (admin only)
-    upload: protectedProcedure
+    // Upload photo with automatic compression
+    upload: manageGalleryProcedure
       .input(z.object({
         title: z.string().min(1),
         description: z.string().optional(),
         category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
         imageBase64: z.string(), // Base64 encoded image
       }))
       .mutation(async ({ ctx, input }) => {
-        const db = await getDb();        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
+        const db = await getDb();
+        if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
         
         // Decode base64 image
         const imageBuffer = Buffer.from(input.imageBase64, 'base64');
@@ -548,55 +607,47 @@ export const appRouter = router({
           mediumUrl: processedImages.medium.url,
           originalUrl: processedImages.original.url,
           category: input.category,
+          tags: input.tags || [],
           uploadedBy: ctx.user.id,
         });
         
         return { success: true, images: processedImages };
       }),
     
-    // Create photo (admin only) - Legacy method
-    create: protectedProcedure
+    // Create photo - Legacy method
+    create: manageGalleryProcedure
       .input(z.object({
         title: z.string().min(1),
         description: z.string().optional(),
         imageUrl: z.string().url(),
         category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
         
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
-        
         await db.insert(galleryPhotos).values({
           ...input,
+          tags: input.tags || [],
           uploadedBy: ctx.user.id,
         });
         
         return { success: true };
       }),
     
-    // Update photo (admin only)
-    update: protectedProcedure
+    // Update photo
+    update: manageGalleryProcedure
       .input(z.object({
         id: z.number(),
         title: z.string().optional(),
         description: z.string().optional(),
         category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         const { id, ...updateData } = input;
         await db.update(galleryPhotos).set(updateData).where(eq(galleryPhotos.id, id));
@@ -604,18 +655,12 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    // Delete photo (admin only)
-    delete: protectedProcedure
+    // Delete photo
+    delete: manageGalleryProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         await db.delete(galleryPhotos).where(eq(galleryPhotos.id, input.id));
         
@@ -630,22 +675,16 @@ export const appRouter = router({
       return await db.select().from(events).where(gte(events.eventDate, new Date())).orderBy(events.eventDate);
     }),
     
-    // Get all events (admin)
-    listAll: protectedProcedure.query(async ({ ctx }) => {
+    // Get all events for editors/admins
+    listAll: manageEventsProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-      
-      // Check if user is admin
-      const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-      if (!user[0] || user[0].role !== 'admin') {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-      }
-      
+
       return await db.select().from(events).orderBy(desc(events.eventDate));
     }),
     
-    // Create event (admin only)
-    create: protectedProcedure
+    // Create event
+    create: manageEventsProcedure
       .input(z.object({
         title: z.string().min(1),
         description: z.string().optional(),
@@ -653,6 +692,9 @@ export const appRouter = router({
         eventTime: z.string().optional(),
         location: z.string().optional(),
         type: z.string().optional(),
+        feeAmount: z.string().optional(),
+        paymentInstructions: z.string().optional(),
+        registrationNotice: z.string().optional(),
         maxParticipants: z.number().optional(),
         registrationDeadline: z.date().optional(),
         status: z.enum(['draft', 'published', 'cancelled', 'completed']).optional(),
@@ -661,12 +703,6 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         await db.insert(events).values({
           ...input,
@@ -677,8 +713,8 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    // Update event (admin only)
-    update: protectedProcedure
+    // Update event
+    update: manageEventsProcedure
       .input(z.object({
         id: z.number(),
         title: z.string().optional(),
@@ -687,20 +723,17 @@ export const appRouter = router({
         eventTime: z.string().optional(),
         location: z.string().optional(),
         type: z.string().optional(),
+        feeAmount: z.string().optional(),
+        paymentInstructions: z.string().optional(),
+        registrationNotice: z.string().optional(),
         maxParticipants: z.number().optional(),
         registrationDeadline: z.date().optional(),
         status: z.enum(['draft', 'published', 'cancelled', 'completed']).optional(),
         allowWaitlist: z.boolean().optional(),
       }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         const { id, allowWaitlist, ...updateData } = input;
         await db.update(events).set({
@@ -711,36 +744,24 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    // Delete event (admin only)
-    delete: protectedProcedure
+    // Delete event
+    delete: manageEventsProcedure
       .input(z.object({ id: z.number() }))
-      .mutation(async ({ ctx, input }) => {
+      .mutation(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         await db.delete(events).where(eq(events.id, input.id));
         
         return { success: true };
       }),
     
-    // Get event with registrations (admin only)
-    getWithRegistrations: protectedProcedure
+    // Get event with registrations
+    getWithRegistrations: manageEventsProcedure
       .input(z.object({ id: z.number() }))
-      .query(async ({ ctx, input }) => {
+      .query(async ({ input }) => {
         const db = await getDb();
         if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
-        
-        // Check if user is admin
-        const user = await db.select().from(users).where(eq(users.id, ctx.user.id)).limit(1);
-        if (!user[0] || user[0].role !== 'admin') {
-          throw new TRPCError({ code: 'FORBIDDEN', message: 'Access denied' });
-        }
         
         return await getEventWithRegistrations(input.id);
       }),
@@ -855,14 +876,14 @@ export const appRouter = router({
       }),
     
     // Get all page content (admin)
-    getAllContent: adminProcedure.query(async () => {
+    getAllContent: manageCMSProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       return await db.select().from(pageContent).orderBy(pageContent.page, pageContent.order);
     }),
     
     // Update page content (admin)
-    updateContent: adminProcedure
+    updateContent: manageCMSProcedure
       .input(z.object({
         id: z.number(),
         content: z.string().optional(),
@@ -882,7 +903,7 @@ export const appRouter = router({
       }),
     
     // Create new content section (admin)
-    createContent: adminProcedure
+    createContent: manageCMSProcedure
       .input(z.object({
         page: z.string(),
         sectionKey: z.string(),
@@ -902,7 +923,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    updatePageContent: protectedProcedure
+    updatePageContent: manageCMSProcedure
       .input(z.object({ id: z.number(), content: z.string().nullable() }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -925,7 +946,7 @@ export const appRouter = router({
         return { success: true };
       }),
 
-    getContentHistory: protectedProcedure
+    getContentHistory: manageCMSProcedure
       .input(z.object({ contentId: z.number() }))
       .query(async ({ input }) => {
         const db = await getDb();
@@ -948,7 +969,7 @@ export const appRouter = router({
         return history;
       }),
 
-    restoreContentVersion: protectedProcedure
+    restoreContentVersion: manageCMSProcedure
       .input(z.object({ contentId: z.number(), historyId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const db = await getDb();
@@ -974,7 +995,7 @@ export const appRouter = router({
       }),
 
     // Delete content section (admin)
-    deleteContent: adminProcedure
+    deleteContent: manageCMSProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const db = await getDb();
@@ -992,7 +1013,7 @@ export const appRouter = router({
     }),
     
     // Update site setting (admin)
-    updateSetting: adminProcedure
+    updateSetting: manageCMSProcedure
       .input(z.object({
         key: z.string(),
         value: z.string(),
@@ -1032,13 +1053,13 @@ export const appRouter = router({
         .orderBy(boardMembers.order);
     }),
     
-    getAllBoardMembers: adminProcedure.query(async () => {
+    getAllBoardMembers: manageCMSProcedure.query(async () => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Database not available' });
       return await db.select().from(boardMembers).orderBy(boardMembers.order);
     }),
     
-    createBoardMember: adminProcedure
+    createBoardMember: manageCMSProcedure
       .input(z.object({
         name: z.string(),
         role: z.string(),
@@ -1056,7 +1077,7 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    updateBoardMember: adminProcedure
+    updateBoardMember: manageCMSProcedure
       .input(z.object({
         id: z.number(),
         name: z.string().optional(),
@@ -1077,7 +1098,7 @@ export const appRouter = router({
         return { success: true };
       }),
     
-    deleteBoardMember: adminProcedure
+    deleteBoardMember: manageCMSProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         const db = await getDb();

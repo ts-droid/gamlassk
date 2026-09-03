@@ -5,15 +5,16 @@ import passport from "passport";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
 
 import { configureGoogleAuth } from "../googleAuth";
 import { createGoogleAuthRoutes } from "../googleAuthRoutes";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
 import * as cron from 'node-cron';
 import { sendPaymentReminders } from '../cron/paymentReminders';
+import { ensureSchemaCompatibility } from "../db";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -37,6 +38,28 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const preferredPort = parseInt(process.env.PORT || "3000");
+
+  console.log("[Startup] Booting Gamla SSK server");
+  console.log(`[Startup] NODE_ENV=${process.env.NODE_ENV || "undefined"}`);
+  console.log(`[Startup] PORT=${preferredPort}`);
+  console.log(`[Startup] Database configured=${process.env.DATABASE_URL ? "yes" : "no"}`);
+  console.log(`[Startup] OWNER_EMAIL configured=${ENV.ownerEmail ? "yes" : "no"}`);
+  console.log(`[Startup] ADMIN_PASSWORD configured=${ENV.adminPassword ? "yes" : "no"}`);
+  if (ENV.ownerEmail) {
+    console.log(`[Startup] OWNER_EMAIL value=${ENV.ownerEmail}`);
+  }
+
+  if (process.env.DATABASE_URL) {
+    await ensureSchemaCompatibility();
+  }
+
+  if (ENV.ownerEmail && ENV.adminPassword) {
+    const { bootstrapOwnerPassword } = await import("../passwordAuth");
+    const bootstrapped = await bootstrapOwnerPassword(ENV.ownerEmail, ENV.adminPassword);
+    console.log(`[Startup] Owner password bootstrap=${bootstrapped ? "ok" : "skipped"}`);
+  }
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -46,8 +69,6 @@ async function startServer() {
   app.use(passport.initialize());
   // Configure Google OAuth
   configureGoogleAuth();
-  // OAuth callback under /api/oauth/callback
-  registerOAuthRoutes(app);
 
   // Google OAuth routes
   app.use(createGoogleAuthRoutes());
@@ -113,15 +134,21 @@ async function startServer() {
   
   console.log('[Cron] Automatic payment reminders DISABLED - use manual reminders in admin panel');
 
-  const preferredPort = parseInt(process.env.PORT || "3000");
-  const port = await findAvailablePort(preferredPort);
+  const port =
+    process.env.NODE_ENV === "production"
+      ? preferredPort
+      : await findAvailablePort(preferredPort);
 
-  if (port !== preferredPort) {
+  if (process.env.NODE_ENV !== "production" && port !== preferredPort) {
     console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
   }
 
-  server.listen(port, () => {
-    console.log(`Server running on http://localhost:${port}/`);
+  server.on("error", error => {
+    console.error("[Startup] Server failed to listen:", error);
+  });
+
+  server.listen(port, "0.0.0.0", () => {
+    console.log(`Server running on http://0.0.0.0:${port}/`);
   });
 }
 

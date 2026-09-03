@@ -15,6 +15,29 @@ import EventsManagement from "@/components/admin/EventsManagement";
 import CMSDashboard from "@/components/admin/CMSDashboard";
 import DocumentManagement from "@/components/admin/DocumentManagement";
 import PaymentVerification from "@/components/admin/PaymentVerification";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
+
+function normalizePermissions(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return [];
+}
 
 export default function Admin() {
   const { user, isLoading } = useAuth();
@@ -27,7 +50,7 @@ export default function Admin() {
       const role = rolesData.find(r => r.id === user.roleId);
       if (role) {
         setUserRole(role);
-        setUserPermissions(role.permissions as string[] || []);
+        setUserPermissions(normalizePermissions(role.permissions));
       }
     }
   }, [user, rolesData]);
@@ -46,12 +69,11 @@ export default function Admin() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold">Administratörspanel - Gamla SSK</h1>
-          <p className="text-gray-600">Välkommen, {user.name}</p>
-        </div>
-      </header>
+      <SiteHeader />
+      <PageHero
+        title="Administratörspanel"
+        description={`Välkommen ${user.name}. Här hanterar du innehåll, medlemmar, roller och dokument.`}
+      />
 
       <main className="container mx-auto px-4 py-8">
         <Tabs defaultValue="news" className="w-full">
@@ -59,9 +81,9 @@ export default function Admin() {
             {hasPermission('manage_news') && <TabsTrigger value="news" className="flex-shrink-0">Nyheter</TabsTrigger>}
             {hasPermission('manage_members') && <TabsTrigger value="memberships" className="flex-shrink-0">Medlemsansökningar</TabsTrigger>}
             {hasPermission('view_members') && <TabsTrigger value="members" className="flex-shrink-0">Medlemsregister</TabsTrigger>}
-            {hasPermission('manage_news') && <TabsTrigger value="gallery" className="flex-shrink-0">Bildgalleri</TabsTrigger>}
-            {hasPermission('manage_news') && <TabsTrigger value="events" className="flex-shrink-0">Evenemang</TabsTrigger>}
-            {hasPermission('manage_all') && <TabsTrigger value="cms" className="flex-shrink-0">CMS</TabsTrigger>}
+            {hasPermission('manage_gallery') && <TabsTrigger value="gallery" className="flex-shrink-0">Bildgalleri</TabsTrigger>}
+            {hasPermission('manage_events') && <TabsTrigger value="events" className="flex-shrink-0">Evenemang</TabsTrigger>}
+            {hasPermission('manage_cms') && <TabsTrigger value="cms" className="flex-shrink-0">CMS</TabsTrigger>}
             {hasPermission('manage_all') && <TabsTrigger value="documents" className="flex-shrink-0">Dokument</TabsTrigger>}
             {hasPermission('manage_all') && <TabsTrigger value="payments" className="flex-shrink-0">Betalningar</TabsTrigger>}
             {hasPermission('manage_roles') && <TabsTrigger value="roles" className="flex-shrink-0">Roller</TabsTrigger>}
@@ -109,6 +131,7 @@ export default function Admin() {
           </TabsContent>
         </Tabs>
       </main>
+      <SiteFooter />
     </div>
   );
 }

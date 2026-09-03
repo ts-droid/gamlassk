@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import passport from 'passport';
 import { upsertUser } from './db';
-import { COOKIE_NAME } from '../shared/const';
+import { COOKIE_NAME, ONE_YEAR_MS } from '../shared/const';
 import { getSessionCookieOptions } from './_core/cookies';
 import { sdk } from './_core/sdk';
 
@@ -45,7 +45,7 @@ export function createGoogleAuthRoutes(): Router {
         const token = await sdk.createSessionToken(openId, { name: user.name || '' });
         const cookieOptions = getSessionCookieOptions(req);
 
-        res.cookie(COOKIE_NAME, token, cookieOptions);
+        res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: ONE_YEAR_MS });
         res.redirect('/');
       } catch (error) {
         console.error('[Google Auth] Callback error:', error);

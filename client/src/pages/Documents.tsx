@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Download, Eye, Lock } from "lucide-react";
 import { getLoginUrl } from "@/const";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
+import { useCMSContent } from "@/hooks/useCMSContent";
 
 const CATEGORY_LABELS = {
   stadgar: "Stadgar",
@@ -16,7 +18,8 @@ const CATEGORY_LABELS = {
 };
 
 export default function Documents() {
-  const { user, isAuthenticated } = useAuth();
+  const { getContent } = useCMSContent("documents");
+  const { isAuthenticated } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   
   const { data: documents, isLoading } = trpc.documents.list.useQuery();
@@ -55,7 +58,7 @@ export default function Documents() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="container mx-auto px-4 py-16">
-          <p className="text-center">Laddar dokument...</p>
+          <p className="text-center">{getContent("loading_text", "Laddar dokument...")}</p>
         </div>
       </div>
     );
@@ -63,29 +66,25 @@ export default function Documents() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-gradient-to-r from-blue-900 to-blue-700 text-white py-16">
-        <div className="container mx-auto px-4">
-          <h1 className="text-4xl font-bold mb-4">Dokumentbibliotek</h1>
-          <p className="text-xl text-blue-100">
-            Hitta stadgar, protokoll och andra viktiga dokument
-          </p>
-        </div>
-      </header>
+      <SiteHeader currentPath="/documents" />
+      <PageHero
+        title={getContent("hero_title", "Dokumentbibliotek")}
+        description={getContent("hero_description", "Hitta stadgar, protokoll och andra viktiga dokument på samma plats.")}
+      />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-12">
         {!isAuthenticated && (
           <Card className="mb-8 border-blue-200 bg-blue-50">
             <CardContent className="pt-6">
-              <div className="flex items-center gap-4">
+              <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
                 <Lock className="h-8 w-8 text-blue-600" />
                 <div className="flex-1">
-                  <p className="font-semibold text-blue-900">Logga in för att se alla dokument</p>
-                  <p className="text-sm text-blue-700">Vissa dokument är endast tillgängliga för medlemmar.</p>
+                  <p className="font-semibold text-blue-900">{getContent("login_notice_title", "Logga in för att se alla dokument")}</p>
+                  <p className="text-sm text-blue-700">{getContent("login_notice_description", "Vissa dokument är endast tillgängliga för medlemmar.")}</p>
                 </div>
-                <Button asChild>
-                  <a href={getLoginUrl()}>Logga in</a>
+                <Button asChild className="w-full sm:w-auto">
+                  <a href={getLoginUrl()}>{getContent("login_button_label", "Logga in")}</a>
                 </Button>
               </div>
             </CardContent>
@@ -93,22 +92,24 @@ export default function Documents() {
         )}
 
         <Tabs defaultValue="all" className="w-full">
-          <TabsList className="mb-6">
+          <div className="mb-6 overflow-x-auto pb-2">
+            <TabsList className="inline-flex min-w-max">
             <TabsTrigger value="all" onClick={() => setSelectedCategory(null)}>
-              Alla dokument
+              {getContent("all_tab_label", "Alla dokument")}
             </TabsTrigger>
             {Object.entries(CATEGORY_LABELS).map(([value, label]) => (
               <TabsTrigger key={value} value={value} onClick={() => setSelectedCategory(value)}>
                 {label}
               </TabsTrigger>
             ))}
-          </TabsList>
+            </TabsList>
+          </div>
 
           <TabsContent value="all" className="space-y-6">
             {!documents || documents.length === 0 ? (
               <Card>
                 <CardContent className="pt-6">
-                  <p className="text-center text-muted-foreground">Inga dokument tillgängliga.</p>
+                  <p className="text-center text-muted-foreground">{getContent("empty_state_title", "Inga dokument tillgängliga.")}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -121,7 +122,7 @@ export default function Documents() {
                     {docs.map((doc: any) => (
                       <Card key={doc.id} className="hover:shadow-lg transition-shadow">
                         <CardHeader>
-                          <div className="flex items-start justify-between">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                             <div className="flex-1">
                               <CardTitle className="flex items-center gap-2">
                                 <FileText className="h-5 w-5 text-blue-600" />
@@ -133,22 +134,24 @@ export default function Documents() {
                                   {doc.description}
                                 </CardDescription>
                               )}
-                              <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
-                                <span>Storlek: {formatFileSize(doc.fileSize)}</span>
-                                <span>Uppladdad: {formatDate(doc.createdAt)}</span>
+                              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                                <span>{getContent("file_size_label", "Storlek")}: {formatFileSize(doc.fileSize)}</span>
+                                <span>{getContent("uploaded_label", "Uppladdad")}: {formatDate(doc.createdAt)}</span>
                               </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="w-full md:w-auto"
                                 onClick={() => window.open(doc.fileUrl, '_blank')}
                               >
                                 <Eye className="mr-2 h-4 w-4" />
-                                Visa
+                                {getContent("view_button_label", "Visa")}
                               </Button>
                               <Button
                                 size="sm"
+                                className="w-full md:w-auto"
                                 onClick={() => {
                                   const link = document.createElement('a');
                                   link.href = doc.fileUrl;
@@ -157,7 +160,7 @@ export default function Documents() {
                                 }}
                               >
                                 <Download className="mr-2 h-4 w-4" />
-                                Ladda ner
+                                {getContent("download_button_label", "Ladda ner")}
                               </Button>
                             </div>
                           </div>
@@ -177,7 +180,7 @@ export default function Documents() {
                 <Card>
                   <CardContent className="pt-6">
                     <p className="text-center text-muted-foreground">
-                      Inga dokument i denna kategori.
+                      {getContent("empty_category_title", "Inga dokument i denna kategori.")}
                     </p>
                   </CardContent>
                 </Card>
@@ -186,7 +189,7 @@ export default function Documents() {
                   {filteredDocuments?.map((doc: any) => (
                     <Card key={doc.id} className="hover:shadow-lg transition-shadow">
                       <CardHeader>
-                        <div className="flex items-start justify-between">
+                        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                           <div className="flex-1">
                             <CardTitle className="flex items-center gap-2">
                               <FileText className="h-5 w-5 text-blue-600" />
@@ -198,22 +201,24 @@ export default function Documents() {
                                 {doc.description}
                               </CardDescription>
                             )}
-                            <div className="flex gap-4 mt-3 text-sm text-muted-foreground">
-                              <span>Storlek: {formatFileSize(doc.fileSize)}</span>
-                              <span>Uppladdad: {formatDate(doc.createdAt)}</span>
+                            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                              <span>{getContent("file_size_label", "Storlek")}: {formatFileSize(doc.fileSize)}</span>
+                              <span>{getContent("uploaded_label", "Uppladdad")}: {formatDate(doc.createdAt)}</span>
                             </div>
                           </div>
-                          <div className="flex gap-2">
+                          <div className="flex w-full flex-col gap-2 sm:flex-row md:w-auto">
                             <Button
                               variant="outline"
                               size="sm"
+                              className="w-full md:w-auto"
                               onClick={() => window.open(doc.fileUrl, '_blank')}
                             >
                               <Eye className="mr-2 h-4 w-4" />
-                              Visa
+                              {getContent("view_button_label", "Visa")}
                             </Button>
                             <Button
                               size="sm"
+                              className="w-full md:w-auto"
                               onClick={() => {
                                 const link = document.createElement('a');
                                 link.href = doc.fileUrl;
@@ -222,7 +227,7 @@ export default function Documents() {
                               }}
                             >
                               <Download className="mr-2 h-4 w-4" />
-                              Ladda ner
+                              {getContent("download_button_label", "Ladda ner")}
                             </Button>
                           </div>
                         </div>
@@ -235,6 +240,7 @@ export default function Documents() {
           ))}
         </Tabs>
       </main>
+      <SiteFooter />
     </div>
   );
 }

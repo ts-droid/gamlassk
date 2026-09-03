@@ -11,7 +11,7 @@ export const users = mysqlTable("users", {
    * Use this for relations between tables.
    */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
+  /** Unique login identifier for the account. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
@@ -102,6 +102,7 @@ export const galleryPhotos = mysqlTable("gallery_photos", {
   mediumUrl: text("mediumUrl"), // 800px width medium size
   originalUrl: text("originalUrl"), // Original full-size image
   category: varchar("category", { length: 100 }),
+  tags: json("tags").$type<string[]>(),
   uploadedBy: int("uploadedBy").references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -120,6 +121,9 @@ export const events = mysqlTable("events", {
   eventTime: varchar("eventTime", { length: 10 }), // e.g., "18:00"
   location: varchar("location", { length: 255 }),
   type: varchar("type", { length: 100 }), // e.g., "Vårfest", "Bingo", "Match"
+  feeAmount: varchar("feeAmount", { length: 20 }),
+  paymentInstructions: text("paymentInstructions"),
+  registrationNotice: text("registrationNotice"),
   maxParticipants: int("maxParticipants"), // null = unlimited
   registrationDeadline: timestamp("registrationDeadline"),
   status: mysqlEnum("status", ["draft", "published", "cancelled", "completed"]).default("published").notNull(),

@@ -1,22 +1,29 @@
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Link } from "wouter";
-import { Home, Calendar as CalendarIcon, MapPin, Clock, Users, CheckCircle, XCircle, AlertCircle } from "lucide-react";
+import { Calendar as CalendarIcon, MapPin, Clock, Users, CheckCircle, XCircle, AlertCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { toast } from "sonner";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
+import { useCMSContent } from "@/hooks/useCMSContent";
+import { renderEventRegistrationNotice } from "@/lib/eventRegistration";
 
 export default function Events() {
   const { data: eventsData } = trpc.events.list.useQuery();
-  const { data: myEvents } = trpc.events.myEvents.useQuery();
-  const { user, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
+  const { data: myEvents } = trpc.events.myEvents.useQuery(undefined, {
+    enabled: isAuthenticated,
+  });
+  const { getContent } = useCMSContent("events");
   const [registeringEventId, setRegisteringEventId] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  const [hasAcceptedNotice, setHasAcceptedNotice] = useState(false);
 
   const registerMutation = trpc.events.register.useMutation({
     onSuccess: (data) => {
@@ -27,6 +34,7 @@ export default function Events() {
       }
       setRegisteringEventId(null);
       setNotes("");
+      setHasAcceptedNotice(false);
     },
     onError: (error) => {
       toast.error(error.message || "Kunde inte anmäla dig");
@@ -44,6 +52,12 @@ export default function Events() {
 
   const handleRegister = (eventId: number) => {
     registerMutation.mutate({ eventId, notes });
+  };
+
+  const closeRegistrationDialog = () => {
+    setRegisteringEventId(null);
+    setNotes("");
+    setHasAcceptedNotice(false);
   };
 
   const handleCancel = (eventId: number) => {
@@ -85,35 +99,22 @@ export default function Events() {
     }
   };
 
+  const registrationNoticeTemplate = getContent("registration_notice");
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-[oklch(0.25_0.08_250)] text-white">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <img src="/logo.png" alt="Gamla SSK Logo" className="h-16 w-16" />
-              <div>
-                <h1 className="text-2xl font-bold">Kalender & Evenemang</h1>
-                <p className="text-sm opacity-90">Föreningen Gamla SSK-are</p>
-              </div>
-            </div>
-            <Link href="/">
-              <Button variant="ghost" className="text-white hover:bg-white/10">
-                <Home className="mr-2 h-4 w-4" />
-                Hem
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader currentPath="/calendar" />
+      <PageHero
+        title={getContent("hero_title", "Kalender och evenemang")}
+        description={getContent("hero_description", "Se våra kommande aktiviteter och anmäl dig direkt här.")}
+      />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold mb-2">Kommande evenemang</h2>
+          <h2 className="text-3xl font-bold mb-2">{getContent("intro_title", "Kommande evenemang")}</h2>
           <p className="text-gray-600">
-            Se våra kommande aktiviteter och anmäl dig direkt här!
+            {getContent("intro_description", "Se våra kommande aktiviteter och anmäl dig direkt här!")}
           </p>
         </div>
 
@@ -157,10 +158,25 @@ export default function Events() {
                     <p className="text-gray-600 mb-4 line-clamp-3">{event.description}</p>
                   )}
 
+                  {(event.feeAmount || event.paymentInstructions) && (
+                    <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+                      {event.feeAmount && (
+                        <div>
+                          <span className="font-medium">{getContent("fee_label", "Avgift")}:</span> {event.feeAmount}
+                        </div>
+                      )}
+                      {event.paymentInstructions && (
+                        <div>
+                          <span className="font-medium">{getContent("payment_label", "Betalning")}:</span> {event.paymentInstructions}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {event.maxParticipants && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
                       <Users className="h-4 w-4" />
-                      <span>Max {event.maxParticipants} deltagare</span>
+                      <span>{getContent("max_participants_prefix", "Max")} {event.maxParticipants} {getContent("max_participants_suffix", "deltagare")}</span>
                     </div>
                   )}
 
@@ -172,7 +188,9 @@ export default function Events() {
                           <div className="flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
                             <CheckCircle className="h-4 w-4" />
                             <span className="text-sm font-medium">
-                              {myReg?.status === 'waitlist' ? 'Du står på reservlistan' : 'Du är anmäld'}
+                              {myReg?.status === 'waitlist'
+                                ? getContent("waitlist_status_label", "Du står på reservlistan")
+                                : getContent("registered_status_label", "Du är anmäld")}
                             </span>
                           </div>
                           <Button
@@ -182,35 +200,63 @@ export default function Events() {
                             disabled={cancelMutation.isPending}
                           >
                             <XCircle className="mr-2 h-4 w-4" />
-                            Avboka
+                            {getContent("cancel_button_label", "Avboka")}
                           </Button>
                         </>
                       ) : (
-                        <Dialog open={registeringEventId === event.id} onOpenChange={(open) => !open && setRegisteringEventId(null)}>
+                        <Dialog open={registeringEventId === event.id} onOpenChange={(open) => !open && closeRegistrationDialog()}>
                           <DialogTrigger asChild>
                             <Button
                               className="w-full"
-                              onClick={() => setRegisteringEventId(event.id)}
+                              onClick={() => {
+                                setRegisteringEventId(event.id);
+                                setNotes("");
+                                setHasAcceptedNotice(false);
+                              }}
                             >
                               <CheckCircle className="mr-2 h-4 w-4" />
-                              Anmäl dig
+                              {getContent("register_button_label", "Anmäl dig")}
                             </Button>
                           </DialogTrigger>
                           <DialogContent>
                             <DialogHeader>
                               <DialogTitle>Anmäl dig till {event.title}</DialogTitle>
                               <DialogDescription>
-                                Bekräfta din anmälan till evenemanget
+                                {getContent("registration_dialog_description", "Bekräfta din anmälan till evenemanget")}
                               </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-4">
+                              <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                                <div className="mb-2 font-medium">{getContent("registration_notice_title", "Viktig information före anmälan")}</div>
+                                <div
+                                  className="prose prose-sm max-w-none text-blue-900 prose-p:my-2"
+                                  dangerouslySetInnerHTML={{
+                                    __html: renderEventRegistrationNotice(registrationNoticeTemplate, event),
+                                  }}
+                                />
+                              </div>
+
+                              <div className="flex items-start gap-3 rounded-lg border border-gray-200 p-3">
+                                <Checkbox
+                                  id={`event-accept-${event.id}`}
+                                  checked={hasAcceptedNotice}
+                                  onCheckedChange={(checked) => setHasAcceptedNotice(checked === true)}
+                                />
+                                <Label
+                                  htmlFor={`event-accept-${event.id}`}
+                                  className="text-sm font-normal leading-6"
+                                >
+                                  {getContent("registration_accept_label", "Jag har läst informationen ovan och förstår att min anmälan registreras i systemet.")}
+                                </Label>
+                              </div>
+
                               <div>
-                                <Label htmlFor="notes">Meddelande (valfritt)</Label>
+                                <Label htmlFor="notes">{getContent("registration_notes_label", "Meddelande (valfritt)")}</Label>
                                 <Textarea
                                   id="notes"
                                   value={notes}
                                   onChange={(e) => setNotes(e.target.value)}
-                                  placeholder="T.ex. allergier, specialkost, etc."
+                                  placeholder={getContent("registration_notes_placeholder", "T.ex. allergier, specialkost, etc.")}
                                   rows={3}
                                 />
                               </div>
@@ -218,15 +264,15 @@ export default function Events() {
                             <DialogFooter>
                               <Button
                                 variant="outline"
-                                onClick={() => setRegisteringEventId(null)}
+                                onClick={closeRegistrationDialog}
                               >
-                                Avbryt
+                                {getContent("registration_cancel_label", "Avbryt")}
                               </Button>
                               <Button
                                 onClick={() => handleRegister(event.id)}
-                                disabled={registerMutation.isPending}
+                                disabled={registerMutation.isPending || !hasAcceptedNotice}
                               >
-                                Bekräfta anmälan
+                                {getContent("registration_confirm_label", "Bekräfta anmälan")}
                               </Button>
                             </DialogFooter>
                           </DialogContent>
@@ -236,7 +282,7 @@ export default function Events() {
                   ) : (
                     <div className="flex items-center gap-2 text-amber-700 bg-amber-50 p-2 rounded">
                       <AlertCircle className="h-4 w-4" />
-                      <span className="text-sm">Logga in för att anmäla dig</span>
+                      <span className="text-sm">{getContent("login_prompt_label", "Logga in för att anmäla dig")}</span>
                     </div>
                   )}
                 </CardContent>
@@ -249,21 +295,16 @@ export default function Events() {
           <div className="text-center py-16">
             <CalendarIcon className="h-24 w-24 mx-auto mb-4 text-gray-300" />
             <h3 className="text-xl font-semibold text-gray-700 mb-2">
-              Inga kommande evenemang
+              {getContent("empty_state_title", "Inga kommande evenemang")}
             </h3>
             <p className="text-gray-600">
-              Håll utkik här för framtida aktiviteter!
+              {getContent("empty_state_description", "Håll utkik här för framtida aktiviteter!")}
             </p>
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-gray-800 text-white mt-16 py-8">
-        <div className="container mx-auto px-4 text-center">
-          <p>&copy; 2024 Föreningen Gamla SSK-are. Alla rättigheter förbehållna.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

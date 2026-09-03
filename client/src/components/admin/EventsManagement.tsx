@@ -19,6 +19,9 @@ export default function EventsManagement() {
     eventDate: "",
     location: "",
     type: "",
+    feeAmount: "",
+    paymentInstructions: "",
+    registrationNotice: "",
   });
 
   const { data: eventsData, refetch } = trpc.events.listAll.useQuery();
@@ -27,7 +30,7 @@ export default function EventsManagement() {
     onSuccess: () => {
       toast.success("Evenemang skapat!");
       setIsCreateOpen(false);
-      setFormData({ title: "", description: "", eventDate: "", location: "", type: "" });
+      setFormData({ title: "", description: "", eventDate: "", location: "", type: "", feeAmount: "", paymentInstructions: "", registrationNotice: "" });
       refetch();
     },
     onError: (error) => {
@@ -39,7 +42,7 @@ export default function EventsManagement() {
     onSuccess: () => {
       toast.success("Evenemang uppdaterat!");
       setEditingEvent(null);
-      setFormData({ title: "", description: "", eventDate: "", location: "", type: "" });
+      setFormData({ title: "", description: "", eventDate: "", location: "", type: "", feeAmount: "", paymentInstructions: "", registrationNotice: "" });
       refetch();
     },
     onError: (error) => {
@@ -65,6 +68,9 @@ export default function EventsManagement() {
     createMutation.mutate({
       ...formData,
       eventDate: new Date(formData.eventDate),
+      feeAmount: formData.feeAmount || undefined,
+      paymentInstructions: formData.paymentInstructions || undefined,
+      registrationNotice: formData.registrationNotice || undefined,
     });
   };
 
@@ -77,6 +83,9 @@ export default function EventsManagement() {
       eventDate: formData.eventDate ? new Date(formData.eventDate) : undefined,
       location: formData.location,
       type: formData.type,
+      feeAmount: formData.feeAmount || undefined,
+      paymentInstructions: formData.paymentInstructions || undefined,
+      registrationNotice: formData.registrationNotice || undefined,
     });
   };
 
@@ -94,6 +103,9 @@ export default function EventsManagement() {
       eventDate: new Date(event.eventDate).toISOString().slice(0, 16),
       location: event.location || "",
       type: event.type || "",
+      feeAmount: event.feeAmount || "",
+      paymentInstructions: event.paymentInstructions || "",
+      registrationNotice: event.registrationNotice || "",
     });
   };
 
@@ -174,6 +186,41 @@ export default function EventsManagement() {
                   placeholder="Beskriv evenemanget..."
                   rows={4}
                 />
+              </div>
+              <div>
+                <Label htmlFor="feeAmount">Avgift</Label>
+                <Input
+                  id="feeAmount"
+                  value={formData.feeAmount}
+                  onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })}
+                  placeholder="t.ex. 300 kr/person"
+                />
+              </div>
+              <div>
+                <Label htmlFor="paymentInstructions">Betalningsinfo</Label>
+                <Textarea
+                  id="paymentInstructions"
+                  value={formData.paymentInstructions}
+                  onChange={(e) => setFormData({ ...formData, paymentInstructions: e.target.value })}
+                  placeholder="t.ex. Swish 123-616 52 29 eller BG 123-4567"
+                  rows={3}
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Den här informationen kan användas i anmälningsrutan tillsammans med CMS-texten för events-sidan.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="registrationNotice">Egen anmälningstext för eventet</Label>
+                <Textarea
+                  id="registrationNotice"
+                  value={formData.registrationNotice}
+                  onChange={(e) => setFormData({ ...formData, registrationNotice: e.target.value })}
+                  placeholder="Valfritt. Om du fyller i detta används texten i anmälningsrutan i stället för den globala CMS-texten."
+                  rows={5}
+                />
+                <p className="mt-2 text-xs text-gray-500">
+                  Du kan använda placeholders som <code>{"{{title}}"}</code>, <code>{"{{feeAmount}}"}</code>, <code>{"{{paymentInstructions}}"}</code>, <code>{"{{eventDate}}"}</code> och <code>{"{{location}}"}</code>.
+                </p>
               </div>
             </div>
             <DialogFooter>
@@ -262,6 +309,32 @@ export default function EventsManagement() {
                             rows={4}
                           />
                         </div>
+                        <div>
+                          <Label htmlFor="edit-feeAmount">Avgift</Label>
+                          <Input
+                            id="edit-feeAmount"
+                            value={formData.feeAmount}
+                            onChange={(e) => setFormData({ ...formData, feeAmount: e.target.value })}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-paymentInstructions">Betalningsinfo</Label>
+                          <Textarea
+                            id="edit-paymentInstructions"
+                            value={formData.paymentInstructions}
+                            onChange={(e) => setFormData({ ...formData, paymentInstructions: e.target.value })}
+                            rows={3}
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="edit-registrationNotice">Egen anmälningstext för eventet</Label>
+                          <Textarea
+                            id="edit-registrationNotice"
+                            value={formData.registrationNotice}
+                            onChange={(e) => setFormData({ ...formData, registrationNotice: e.target.value })}
+                            rows={5}
+                          />
+                        </div>
                       </div>
                       <DialogFooter>
                         <Button variant="outline" onClick={() => setEditingEvent(null)}>
@@ -297,6 +370,21 @@ export default function EventsManagement() {
                 )}
                 {event.description && (
                   <p className="text-sm text-gray-600 mt-2">{event.description}</p>
+                )}
+                {event.feeAmount && (
+                  <p className="text-sm text-gray-700 mt-2">
+                    <span className="font-medium">Avgift:</span> {event.feeAmount}
+                  </p>
+                )}
+                {event.paymentInstructions && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Betalning:</span> {event.paymentInstructions}
+                  </p>
+                )}
+                {event.registrationNotice && (
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Egen anmälningstext:</span> Ja
+                  </p>
                 )}
               </div>
             </CardContent>

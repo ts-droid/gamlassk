@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import { Redirect } from "wouter";
+import { Link, Redirect } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogoutButton } from "@/components/LogoutButton";
 import { MemberVerificationBanner } from "@/components/MemberVerificationBanner";
@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { PageHero, SiteFooter, SiteHeader } from "@/components/SiteChrome";
 
 export default function Profile() {
   const { user, isLoading: authLoading } = useAuth();
@@ -77,12 +78,11 @@ export default function Profile() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold">Min sida - Gamla SSK</h1>
-          <p className="text-gray-600">Hantera din medlemsprofil</p>
-        </div>
-      </header>
+      <SiteHeader currentPath="/profile" />
+      <PageHero
+        title="Min sida"
+        description="Hantera din medlemsprofil, uppdatera dina uppgifter och följ din medlemsstatus."
+      />
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <div className="mb-6">
@@ -133,23 +133,13 @@ export default function Profile() {
                   )}
                   {user.paymentStatus === 'unpaid' && (
                     <div className="mt-3 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                      <p className="text-sm text-yellow-800 mb-3">
+                      <p className="text-sm text-yellow-800">
                         <strong>OBS!</strong> Din medlemsavgift är obetald.
                       </p>
-                      <div className="bg-white p-4 rounded-md border border-yellow-300">
-                        <h4 className="font-semibold text-gray-900 mb-3 text-center">Betala med Swish</h4>
-                        <div className="flex flex-col items-center gap-3">
-                          <img 
-                            src="/swish-qr.png" 
-                            alt="Swish QR-kod för medlemsavgift" 
-                            className="w-48 h-auto"
-                          />
-                          <div className="text-center">
-                            <p className="text-sm text-gray-600">Swish-nummer:</p>
-                            <p className="text-xl font-bold text-gray-900">123-616 52 29</p>
-                            <p className="text-xs text-gray-500 mt-2">Ange ditt medlemsnummer i meddelandet</p>
-                          </div>
-                        </div>
+                      <div className="mt-3">
+                        <Button asChild size="sm">
+                          <Link href="/payment">Gå till betalningssidan</Link>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -255,6 +245,7 @@ export default function Profile() {
           </CardContent>
         </Card>
       </main>
+      <SiteFooter />
     </div>
   );
 }

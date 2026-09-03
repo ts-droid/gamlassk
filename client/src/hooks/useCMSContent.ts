@@ -78,6 +78,17 @@ export function useSiteSettings() {
   };
 }
 
+export function useSiteBranding() {
+  const { settings, getSetting, isLoading } = useSiteSettings();
+  const siteHeaderLogo = settings.site_header_logo || settings.site_logo || "/logo-wreath.png";
+
+  return {
+    siteLogo: siteHeaderLogo,
+    siteName: getSetting("site_name", "Föreningen Gamla SSK-are"),
+    isLoading,
+  };
+}
+
 export function useBoardMembers() {
   // Cache board members for 10 minutes since they rarely change
   const { data: membersData, isLoading } = trpc.cms.getBoardMembers.useQuery(

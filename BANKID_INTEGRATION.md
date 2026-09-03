@@ -64,7 +64,7 @@ BANKID_ENABLED=true
 BANKID_CLIENT_ID=din-client-id-från-leverantör
 BANKID_CLIENT_SECRET=din-client-secret-från-leverantör
 BANKID_ISSUER_URL=https://your-domain.criipto.id
-BANKID_CALLBACK_URL=https://din-sajt.manus.space/auth/bankid/callback
+BANKID_CALLBACK_URL=https://din-sajt.se/auth/bankid/callback
 ```
 
 ### Steg 3: Installera OIDC-bibliotek
@@ -219,7 +219,7 @@ Många leverantörer erbjuder **gratis testmiljö** för utveckling.
 
 ## Nuvarande status
 
-Projektet använder för närvarande **Manus OAuth** för autentisering. BankID kan läggas till som ett **alternativt inloggningssätt** utan att påverka befintliga användare.
+Projektet använder för närvarande lokal inloggning med e-post/lösenord och kan även ha Google-inloggning aktiverad. BankID kan läggas till som ett **alternativt inloggningssätt** utan att påverka befintliga användare.
 
 ## Implementationsstatus
 
@@ -246,7 +246,7 @@ Projektet använder för närvarande **Manus OAuth** för autentisering. BankID 
 A: Ja, men det kräver mycket mer arbete: servercertifikat, QR-kod-generering, polling av BankID-API, felhantering, etc. OIDC-lösningen är starkt rekommenderad.
 
 **Q: Vad händer med befintliga användare?**
-A: Användare som redan är inloggade med Manus OAuth kan fortsätta använda det. BankID blir ett alternativt inloggningssätt.
+A: Användare som redan har konto kan fortsätta använda sina befintliga inloggningssätt. BankID blir ett alternativt inloggningssätt.
 
 **Q: Kan vi koppla BankID till befintliga konton?**
 A: Ja, detta kan implementeras genom att matcha personnummer eller email när användaren loggar in första gången med BankID.
